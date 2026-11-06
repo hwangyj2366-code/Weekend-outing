@@ -1,0 +1,51 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>주말에 어디가지?</title><meta name="description" content="아이와 함께 갈 주말 나들이 장소를 발견하고 정리하세요.">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f8f7ef;color:#193b2e;font:16px/1.6 system-ui,sans-serif}header,main,footer{max-width:1100px;margin:auto;padding:22px 25px}header,.row,nav,.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}header,.row{justify-content:space-between}header strong{font-size:20px}.hero{background:#dbebad;border-radius:32px;padding:clamp(28px,6vw,75px);position:relative;overflow:hidden}.hero svg{position:absolute;right:-15px;bottom:0;width:48%;height:auto;pointer-events:none}.hero div{position:relative;z-index:1}.eyebrow{letter-spacing:.17em;font-weight:800;font-size:12px}h1{font-size:clamp(40px,7vw,76px);line-height:1.08;letter-spacing:-.075em;margin:16px 0}h2{font-size:29px;margin:0;letter-spacing:-.05em}button,input,select,textarea{font:inherit}button,.link{cursor:pointer;border:1px solid #b9c7b7;border-radius:30px;background:#fffdf5;padding:8px 16px;color:inherit;text-decoration:none}button.active,.primary{background:#214a36;color:white;border-color:#214a36}nav{margin:25px 0 16px}.filters{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.filters input{flex:1;min-width:140px}input,select,textarea{border:1px solid #b9c7b7;border-radius:12px;padding:9px;background:#fffefa;color:inherit}#grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,275px),1fr));gap:16px;margin-top:16px}.card{background:#fffdf5;border:1px solid #dedfd1;border-radius:22px;overflow:hidden}.art{height:112px;display:grid;place-items:center;font-size:56px;background:var(--bg)}.info{padding:17px}.info h3{margin:2px 0;font-size:22px;letter-spacing:-.04em}.info p{min-height:48px;margin:8px 0 14px}.muted{color:#526657;font-size:14px}dialog{color:inherit;border:1px solid #b9c7b7;border-radius:22px;background:#fffdf5;width:min(94vw,580px);padding:24px}dialog::backdrop{background:#18342699}form label{display:grid;gap:4px;margin:10px 0}footer{font-size:13px;color:#526657}@media(max-width:600px){.hero svg{opacity:.38}.hero p{max-width:235px}}
+</style>
+<header><strong>🌿 주말에 어디가지?</strong><button class="primary" id="open">＋ 즐겨찾기 가져오기</button></header>
+<main><section class="hero"><svg viewBox="0 0 420 240" aria-hidden="true"><circle cx="290" cy="62" r="37" fill="#ffc46d"/><path d="M0 240 150 70 293 240" fill="#80ac74"/><path d="M95 240 285 103 420 224v16" fill="#4b825e"/><path d="M194 240 251 161 310 240" fill="#f9db90"/><path d="m251 186-31 54h61z" fill="#b5784d"/></svg><div><span class="eyebrow">WEEKEND CLUB</span><h1>이번 주말,<br>아이랑 어디 갈까?</h1><p>지도에 모아 둔 곳부터 처음 만나는 나들이까지.</p><button id="pick" class="primary">🎲 한 곳 골라줘</button></div></section>
+<nav aria-label="장소 목록"><button data-tab="discover" class="active">새로운 장소</button><button data-tab="saved">내 즐겨찾기</button></nav>
+<div class="row"><h2 id="heading">아이와 가볼 만한 곳</h2><span class="muted" id="count" aria-live="polite"></span></div>
+<div class="filters"><input id="search" type="search" placeholder="장소·지역 검색" aria-label="장소 또는 지역 검색"><select id="filter" aria-label="카테고리"></select></div>
+<div id="grid"></div></main>
+<footer>첫 추천 목록은 서울·경기 기준이에요. 방문 전 운영시간과 예약 여부를 지도에서 확인해 주세요.</footer>
+<dialog id="dialog"><div class="row"><h2>즐겨찾기 가져오기</h2><button type="button" id="close" aria-label="닫기">✕</button></div><p class="muted">네이버지도나 구글지도에서 장소의 공유 링크를 복사해 추가하세요. 구글 Takeout에서 내려받은 Saved CSV도 가져올 수 있어요.</p>
+<form id="form"><label>장소 이름<input id="name" required maxlength="150" placeholder="예: 우리 가족 캠핑장"></label><label>지도 공유 링크<input id="url" type="url" placeholder="https://…"></label><label>카테고리<select id="category"></select></label><button class="primary">장소 추가</button></form><hr><label>구글 Saved CSV <input id="csv" type="file" accept=".csv,text/csv"></label><p id="status" role="status"></p></dialog>
+<dialog id="choice"><div class="row"><h2>오늘의 나들이 후보</h2><button id="closeChoice" aria-label="닫기">✕</button></div><div id="picked"></div></dialog>
+<script>
+const types={'과학관':['🔭','#dfe8fb'],'박물관':['🏛️','#fae5c2'],'캠핑장':['⛺','#e5ebc8'],'체험·놀이':['🎨','#f9dfe3'],'자연·공원':['🌳','#d7ebe0'],'기타':['📍','#eee7dd']};
+const seed=[
+['국립과천과학관','경기 과천','과학관','과학 전시를 둘러보고 아이가 좋아하는 주제를 찾아보세요.'],
+['서울상상나라','서울 광진구','체험·놀이','어린이대공원 안에서 놀이와 체험 전시를 즐겨보세요.'],
+['서울대공원 캠핑장','경기 과천','캠핑장','숲에서 시간을 보내고 싶은 주말에 어울려요.'],
+['국립어린이과학관','서울 종로구','과학관','어린이 눈높이의 과학 전시를 만나볼 수 있어요.'],
+['국립중앙박물관 어린이박물관','서울 용산구','박물관','유물과 역사를 아이와 함께 놀이처럼 만나보세요.'],
+['서울숲','서울 성동구','자연·공원','아이와 산책하거나 잔디밭에서 쉬어가기 좋아요.'],
+['난지캠핑장','서울 마포구','캠핑장','한강 근처에서 캠핑을 즐기고 싶은 날에 살펴보세요.'],
+['경기도어린이박물관','경기 용인','박물관','아이 중심의 체험 전시를 둘러볼 수 있어요.']
+].map(([name,region,category,note],i)=>({id:'seed'+i,name,region,category,note}));
+const $=id=>document.getElementById(id);
+let saved=[];try{saved=JSON.parse(localStorage.getItem('weekend-places-v1')||'[]')}catch{}
+let tab='discover';
+const infer=s=>/과학관|천문대/.test(s)?'과학관':/박물관|미술관|기념관/.test(s)?'박물관':/캠핑|야영|글램핑/.test(s)?'캠핑장':/키즈|체험|상상나라|놀이/.test(s)?'체험·놀이':/공원|수목원|동물원|휴양림/.test(s)?'자연·공원':'기타';
+const valid=s=>{try{const u=new URL(s);return ['https:','http:'].includes(u.protocol)?u.href:''}catch{return ''}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const options=Object.keys(types).map(t=>'<option>'+t+'</option>').join('');
+$('filter').innerHTML='<option value="">모든 카테고리</option>'+options;
+$('category').innerHTML='<option value="">이름으로 자동 분류</option>'+options;
+function persist(next){try{localStorage.setItem('weekend-places-v1',JSON.stringify(next));saved=next;return true}catch{alert('브라우저에 저장할 수 없어요. 저장 공간이나 브라우저 설정을 확인해 주세요.');return false}}
+function visible(){const q=$('search').value.trim().toLowerCase();return (tab==='saved'?saved:seed.filter(p=>!saved.some(s=>s.name===p.name))).filter(p=>(!$('filter').value||p.category===$('filter').value)&&[p.name,p.region,p.category].join(' ').toLowerCase().includes(q))}
+function card(p){const [icon,bg]=types[p.category]||types['기타'];const term=encodeURIComponent([p.name,p.region].filter(Boolean).join(' '));const has=saved.some(s=>s.id===p.id);return '<article class="card"><div class="art" style="--bg:'+bg+'" aria-hidden="true">'+icon+'</div><div class="info"><div class="muted">'+esc(p.category)+(p.region?' · '+esc(p.region):'')+'</div><h3>'+esc(p.name)+'</h3><p class="muted">'+esc(p.note||(p.url?'지도에서 위치와 방문 정보를 확인해 보세요.':'장소 이름으로 지도에서 검색할 수 있어요.'))+'</p><div class="actions">'+(valid(p.url)?'<a class="link" target="_blank" rel="noopener noreferrer" href="'+esc(valid(p.url))+'">원본 지도 ↗</a>':'<a class="link" target="_blank" rel="noopener noreferrer" href="https://map.naver.com/p/search/'+term+'">네이버 ↗</a><a class="link" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query='+term+'">구글 ↗</a>')+'<button data-save="'+esc(p.id)+'">'+(has?'저장 해제':'♡ 저장')+'</button></div></div></article>'}
+function render(){const rows=visible();$('heading').textContent=tab==='saved'?'내 즐겨찾기':'아이와 가볼 만한 곳';$('count').textContent=rows.length+'곳';$('grid').innerHTML=rows.map(card).join('')||'<p>조건에 맞는 장소가 없어요. 검색 조건을 바꾸거나 즐겨찾기를 추가해 보세요.</p>'}
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;document.querySelectorAll('[data-tab]').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',x===b)});$('filter').value='';$('search').value='';render()});
+document.addEventListener('click',e=>{const id=e.target.closest('[data-save]')?.dataset.save;if(!id)return;const p=seed.find(s=>s.id===id);const next=saved.some(s=>s.id===id)?saved.filter(s=>s.id!==id):p?[...saved,p]:saved;if(persist(next)){render();if($('choice').open)$('choice').close()}});
+$('filter').onchange=render;$('search').oninput=render;
+$('pick').onclick=()=>{const rows=visible().filter(p=>p.category!=='기타');$('picked').innerHTML=rows.length?card(rows[Math.floor(Math.random()*rows.length)]):'<p>현재 조건에 추천할 나들이 장소가 없어요. 카테고리나 검색 조건을 바꿔 보세요.</p>';$('choice').showModal()};
+$('closeChoice').onclick=()=>$('choice').close();$('open').onclick=()=>$('dialog').showModal();$('close').onclick=()=>$('dialog').close();
+function place(name,url,category,note=''){return {id:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random(),name,url,category:category||infer(name),note}}
+function add(rows){const next=[...saved];for(const p of rows){if(!next.some(s=>p.name===s.name&&(!p.url||!s.url||p.url===s.url)))next.push(p)}const count=next.length-saved.length;if(!persist(next))return null;render();return count}
+$('form').onsubmit=e=>{e.preventDefault();const name=$('name').value.trim(), raw=$('url').value.trim(),url=valid(raw);if(!name||(raw&&!url)){$('status').textContent='장소 이름과 올바른 지도 링크를 입력해 주세요.';return}const n=add([place(name,url,$('category').value)]);if(n===null)return;if(n)e.target.reset();$('status').textContent=n?'내 즐겨찾기에 추가했어요.':'이미 저장한 장소예요.'};
+function parseCsv(text){const rows=[];let row=[],field='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){field+='"';i++}else if(quoted||!field)quoted=!quoted;else field+=c}else if(!quoted&&(c===','||c==='\n'||c==='\r')){row.push(field);field='';if(c!==','){rows.push(row);row=[];if(c==='\r'&&text[i+1]==='\n')i++}}else field+=c}if(quoted)throw Error();if(row.length||field)rows.push([...row,field]);return rows}
+$('csv').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>5000000)throw Error();const rows=parseCsv((await file.text()).replace(/^\uFEFF/,''));const header=rows.shift()?.map(x=>x.trim().toLowerCase())||[];const col=(...keys)=>header.findIndex(x=>keys.includes(x));const n=col('title','name','제목','이름','장소 이름'),u=col('url','link','링크'),m=col('note','메모');if(n<0)throw Error();const result=add(rows.filter(r=>r[n]?.trim()).map(r=>place(r[n].trim(),valid(r[u]),'',r[m]||'')));if(result!==null)$('status').textContent=result+'곳을 추가했어요. 이미 저장한 장소는 건너뛰었어요.'}catch{$('status').textContent='5MB 이하의 Saved CSV를 선택해 주세요. 장소 이름 열(Title)이 필요해요.'}finally{e.target.value=''}};
+render();
+</script></html>

@@ -1,0 +1,5 @@
+{"type":"FeatureCollection","features":[
+ {"type":"Feature","geometry":{"type":"Point","coordinates":[127.0,37.4]},"properties":{"date":"2025-09-01T00:00:00Z","google_maps_url":"http://maps.google.com/?cid=111","location":{"address":"대한민국 경기도 용인시 기흥구 상갈로 6","country_code":"KR","name":"경기도어린이박물관"}}},
+ {"type":"Feature","geometry":{"type":"Point","coordinates":[126.9,37.5]},"properties":{"Google Maps URL":"http://maps.google.com/?cid=222","Location":{"Address":"서울특별시 마포구 하늘공원로 84","Business Name":"하늘공원"},"Title":"하늘공원"}},
+ {"type":"Feature","properties":{"google_maps_url":"http://maps.google.com/?q=37.1,127.1","location":{}}}
+]}

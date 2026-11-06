@@ -1,0 +1,11 @@
+{
+  "name": "weekend-outing",
+  "version": "2.0.0",
+  "private": true,
+  "description": "주말에 어디가지? — 아이와 갈 나들이 장소 정리·추천 모바일 웹앱",
+  "scripts": {
+    "start": "node scripts/serve.mjs 8090",
+    "selftest": "node scripts/selftest.mjs",
+    "deploy:function": "npx supabase functions deploy discover --no-verify-jwt"
+  }
+}
