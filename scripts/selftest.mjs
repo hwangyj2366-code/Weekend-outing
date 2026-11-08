@@ -130,4 +130,21 @@ assert.equal(C.infer('이지캠프 양주'), '캠핑장');
 assert.equal(C.infer('아쿠아플라넷 일산'), '체험·놀이');
 ok('네이버 리스트 링크(리다이렉트 3단계)에서 id 찾기, 장소 하나 링크는 구분');
 
+// 12. 분류 개편: 여행지는 '아이랑'으로, 시장·거리는 기타로 / 다시 가져오면 위치만 채움
+assert.equal(C.groupOf('여행지'), 'kids');
+assert.ok(!C.GROUPS.some((g) => g.id === 'trip'));
+assert.equal(C.infer('자갈치신동아시장'), '관광·쇼핑');
+assert.equal(C.groupOf('관광·쇼핑'), 'etc');
+const s2 = mem();
+C.savePlaces(s2, [C.makePlace({ name: '부산BIFF거리', category: '여행지' }), C.makePlace({ name: '먹자골목 거리', category: '여행지', manual: true }), C.makePlace({ name: '화개정원', category: '여행지' })]);
+const L2 = C.loadPlaces(s2);
+assert.deepEqual(L2.places.map((p) => p.category), ['관광·쇼핑', '여행지', '여행지'], '직접 고른 분류는 유지');
+const noPos = [C.makePlace({ name: '레고랜드 코리아', url: 'https://map.naver.com/p/entry/place/1798639977' })];
+const filled = C.mergeImport(noPos, [{ name: '레고랜드 코리아', url: 'https://map.naver.com/p/entry/place/1798639977', lat: 37.88, lng: 127.69 }, { name: '바다 위', lat: 10, lng: 10 }]);
+assert.equal(filled.report.added.length, 1);
+assert.deepEqual(filled.report.located, ['레고랜드 코리아']);
+assert.equal(filled.next[0].lat, 37.88);
+assert.equal(filled.next[1].lat, null, '한국 밖 좌표는 버림');
+ok('분류 개편(여행지→아이랑, 시장·거리→기타, 직접 분류 유지), 다시 가져오면 중복 없이 지도 위치만 채움');
+
 console.log(`\n모든 확인 통과 (${n}개)`);

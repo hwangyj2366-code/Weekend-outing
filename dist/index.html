@@ -117,6 +117,12 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .toast{position:fixed;left:50%;bottom:calc(var(--tab) + 18px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--green);color:#fff;border-radius:20px;padding:10px 18px;z-index:50;font-size:15px;max-width:90vw;box-shadow:0 6px 20px #18342655}
+.chips.sub button{min-height:36px;padding:4px 12px;font-size:14px}
+.mapdlg{height:92vh;display:none;flex-direction:column}
+.mapdlg[open]{display:flex}
+#mapBox{flex:1;min-height:300px}
+.pin span{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 6px #0004;font-size:18px}
+.leaflet-popup-content{font:14px/1.5 system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -155,7 +161,10 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
   <!-- 즐겨찾기 -->
   <div id="page-saved" data-page="saved" hidden>
     <input id="search" class="search" type="search" placeholder="이름·지역·메모 검색" aria-label="즐겨찾기 검색">
-    <div class="chips" id="favGroups" role="group" aria-label="분류"></div>
+    <div class="chips" id="favGroups" role="group" aria-label="큰 분류"></div>
+    <div class="chips sub" id="favSub" role="group" aria-label="세부 분류"></div>
+    <div class="chips sub" id="favRegion" role="group" aria-label="지역"></div>
+    <div class="row between" id="favMap" style="margin-top:6px" hidden></div>
     <div id="favList"></div>
   </div>
 
@@ -169,6 +178,10 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
     <div class="box">
       <h3>🏠 홈에서 추천할 분류</h3>
       <div id="setGroups"></div>
+    </div>
+    <div class="box">
+      <h3>🔗 가져온 지도 리스트</h3>
+      <div id="setLists"></div>
     </div>
     <div class="box">
       <h3>🔥 인기 장소 데이터</h3>
@@ -269,6 +282,12 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
     <div id="pickBody" class="detail"></div>
   </div>
   <div class="sheet-foot"><button id="reroll" class="big">🎲 다른 곳</button></div>
+</dialog>
+
+<!-- 지도에서 보기 -->
+<dialog id="mapDlg" class="mapdlg" aria-labelledby="mapTitle">
+  <div class="sheet-head"><div><h2 id="mapTitle">지도</h2><span class="muted" id="mapNote"></span></div><button data-close aria-label="닫기">✕</button></div>
+  <div id="mapBox"></div>
 </dialog>
 
 <!-- 인기 기준 -->

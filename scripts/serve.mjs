@@ -17,6 +17,27 @@ let KEY = process.env.TOUR_API_KEY || '';
 try { KEY ||= (/^\s*TOUR_API_KEY\s*=\s*(\S+)/m.exec(readFileSync(path.resolve(here, '..', '.env.local'), 'utf8')) || [])[1] || ''; } catch { /* 키 없음 → 기본 추천만 */ }
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
 
+// 공공데이터포털 응답이 느려(호출당 최대 30초) 인기 장소는 백그라운드에서 만들어 파일로 저장해 둬요.
+const CACHE_DIR = path.resolve(here, '..', '.cache');
+const FRESH_MS = 12 * 60 * 60 * 1000;
+const running = new Map();
+async function readCache(region) {
+  try { return JSON.parse(await fs.readFile(path.join(CACHE_DIR, `discover-${region}.json`), 'utf8')); } catch { return null; }
+}
+function refresh(region) {
+  if (running.has(region)) return;
+  const started = Date.now();
+  console.log(`[discover] ${region} 데이터 만들기 시작`);
+  running.set(region, discover(KEY, region)
+    .then(async (body) => {
+      await fs.mkdir(CACHE_DIR, { recursive: true });
+      await fs.writeFile(path.join(CACHE_DIR, `discover-${region}.json`), JSON.stringify(body));
+      console.log(`[discover] ${region} 완료: ${body.places.length}곳, ${Math.round((Date.now() - started) / 1000)}초, 실패 호출 ${body.errors.length}건`);
+    })
+    .catch((e) => console.warn(`[discover] ${region} 실패:`, hide(e.message)))
+    .finally(() => running.delete(region)));
+}
+
 const sendJson = (res, status, body) => res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }).end(JSON.stringify(body));
 const hide = (s) => (KEY ? String(s).split(KEY).join('***') : String(s));
 
@@ -24,8 +45,12 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/api/discover') {
     if (!KEY) return sendJson(res, 503, { error: 'TOUR_API_KEY가 설정되지 않았어요.' });
-    try { return sendJson(res, 200, await discover(KEY, url.searchParams.get('region') || 'sg')); }
-    catch (e) { console.warn('[discover]', hide(e.message)); return sendJson(res, e.status || 502, { error: hide(e.message) }); }
+    const region = /^[a-z]+$/.test(url.searchParams.get('region') || '') ? url.searchParams.get('region') : 'sg';
+    const cached = await readCache(region);
+    const fresh = cached && Date.now() - new Date(cached.fetchedAt).getTime() < FRESH_MS;
+    if (!fresh) refresh(region);
+    if (cached) return sendJson(res, 200, { ...cached, refreshing: !fresh });
+    return sendJson(res, 202, { pending: true, message: '인기 장소 데이터를 처음 만드는 중이에요. 몇 분 걸려요.' });
   }
   if (url.pathname === '/api/import-list') {
     try { return sendJson(res, 200, await importList(url.searchParams.get('url') || '')); }

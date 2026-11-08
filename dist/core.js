@@ -14,10 +14,11 @@
     '체험·놀이': { icon: '🎨', bg: '#f9dfe3', env: '실내', group: 'kids' },
     '자연·공원': { icon: '🌳', bg: '#d7ebe0', env: '야외', group: 'kids' },
     '캠핑장': { icon: '⛺', bg: '#e5ebc8', env: '야외', group: 'camp' },
-    '여행지': { icon: '🧳', bg: '#dcebf2', env: '야외', group: 'trip', label: '여행지·명소' },
-    '축제·행사': { icon: '🎪', bg: '#fbe2cf', env: '야외', group: 'trip' },
+    '여행지': { icon: '🧳', bg: '#dcebf2', env: '야외', group: 'kids', label: '나들이·명소' },
+    '축제·행사': { icon: '🎪', bg: '#fbe2cf', env: '야외', group: 'kids' },
     '맛집·카페': { icon: '🍽️', bg: '#f3e3d3', env: '실내', group: 'food', label: '음식점·카페' },
     '숙소·펜션': { icon: '🏡', bg: '#e8e2f3', env: '', group: 'stay', label: '숙소·펜션' },
+    '관광·쇼핑': { icon: '🛍️', bg: '#efe6f5', env: '', group: 'etc', label: '시장·거리·쇼핑' },
     '골프·레저': { icon: '⛳', bg: '#dceee0', env: '야외', group: 'etc' },
     '기타': { icon: '📍', bg: '#eee7dd', env: '', group: 'etc' },
   };
@@ -25,7 +26,6 @@
   const GROUPS = [
     { id: 'kids', label: '아이랑 가볼만한 곳', short: '아이랑', icon: '🧒', outing: true },
     { id: 'camp', label: '캠핑장', short: '캠핑장', icon: '⛺', outing: true },
-    { id: 'trip', label: '여행지', short: '여행지', icon: '🧳', outing: true },
     { id: 'food', label: '음식점·카페', short: '음식점', icon: '🍽️', outing: false },
     { id: 'stay', label: '숙소', short: '숙소', icon: '🏡', outing: false },
     { id: 'etc', label: '기타', short: '기타', icon: '📍', outing: false },
@@ -45,7 +45,9 @@
     ['자연·공원', /공원|수목원|식물원|동물원|휴양림|숲|생태|습지|계곡|농장|목장|park|zoo|arboretum|forest/i],
     ['체험·놀이', /키즈|어린이|체험|놀이|상상나라|아쿠아|수족관|워터파크|마법학교|치즈학교|테마파크|랜드|월드|트램폴린|방방|kids|aquarium|playground/i],
     ['맛집·카페', /음식점|식당|맛집|카페|커피|디저트|베이커리|빵|국밥|냉면|갈비|고기|치킨|피자|분식|횟집|레스토랑|면옥|막국수|떡볶이|브런치|한식|중식|일식|양식|restaurant|cafe|coffee|bakery|bistro/i],
-    ['여행지', /관광|명소|여행|궁$|궁궐|성곽|한옥마을|전망대|타워|해변|해수욕장|섬$|폭포|케이블카|스카이워크|둘레길|호수|온천|사찰|산성|beach|island|tower|palace|temple/i],
+    // 아이 나들이와 거리가 먼 관광지는 '기타'의 시장·거리·쇼핑으로 (워터파크·찜질방 같은 체험은 위에서 먼저 걸러져요)
+    ['관광·쇼핑', /시장|거리$|쇼핑|아울렛|백화점|면세|몰$|온천|사찰|성당|교회|와이너리|양조|포차|카지노/],
+    ['여행지', /관광|명소|여행|궁$|궁궐|성곽|한옥마을|전망대|타워|해변|해수욕장|섬$|폭포|케이블카|스카이워크|둘레길|호수|산성|정원|마을$|beach|island|tower|palace/i],
     ['체험·놀이', /여가/], // 네이버 업종 '여가'(키즈카페·놀이시설 등) — 이름으로 못 정할 때만
   ];
   function infer(...texts) {
@@ -140,6 +142,7 @@
     if (c && typeof c.randomUUID === 'function') return c.randomUUID();
     return Date.now().toString(36) + '-' + (++seq) + '-' + Math.random().toString(36).slice(2, 8);
   }
+  const coord = (v, min, max) => { const n = Number(v); return v != null && v !== '' && Number.isFinite(n) && n >= min && n <= max ? n : null; };
   function makePlace(p) {
     const name = String(p.name || '').trim().slice(0, 150);
     const category = TYPES[p.category] ? p.category : infer(name, p.note, p.tags);
@@ -152,6 +155,8 @@
       region: String(p.region || '').trim(),
       note: String(p.note || '').trim().slice(0, 500),
       list: p.list || '',
+      lat: coord(p.lat, 33, 39), lng: coord(p.lng, 124, 132), // 한국 범위만
+      manual: !!p.manual, // 사용자가 분류를 직접 바꾼 곳은 자동 재분류하지 않아요
       source: p.source || 'manual',
       addedAt: p.addedAt || new Date().toISOString(),
     };
@@ -162,7 +167,17 @@
     const read = (k) => { try { return storage.getItem(k); } catch { return null; } };
     try {
       const v2 = JSON.parse(read(STORAGE_KEY) || 'null');
-      if (v2 && Array.isArray(v2.places)) return { places: v2.places.map(makePlace), migrated: false };
+      if (v2 && Array.isArray(v2.places)) {
+        const places = v2.places.map(makePlace);
+        let changed = false;
+        // 분류 체계가 바뀌어 '여행지' 중 시장·거리 등은 '기타'로 옮겨요(직접 고른 분류는 그대로).
+        places.forEach((p) => {
+          if (p.manual || p.category !== '여행지') return;
+          const c = infer(p.name, p.note);
+          if (c === '관광·쇼핑') { p.category = c; p.env = TYPES[c].env; changed = true; }
+        });
+        return { places, migrated: changed };
+      }
     } catch { /* 손상된 v2는 무시하고 v1을 시도 */ }
     try {
       const v1 = JSON.parse(read(LEGACY_KEY) || '[]');
@@ -180,14 +195,23 @@
   // 가져오기 후보(장소 또는 {error})를 기존 목록과 합칩니다.
   function mergeImport(saved, candidates) {
     const next = [...saved];
-    const report = { added: [], duplicates: [], errors: [], warnings: [] };
+    const report = { added: [], duplicates: [], errors: [], warnings: [], located: [] };
     for (const c of candidates) {
       if (c.error) { report.errors.push(c); continue; }
       if (c.warning) report.warnings.push({ name: c.name, warning: c.warning });
       const place = makePlace(c);
       if (!place.name) { report.errors.push({ line: c.line, error: '장소 이름이 없어요' }); continue; }
       const dup = next.find((s) => isDup(s, place));
-      if (dup) { report.duplicates.push(place.name); continue; }
+      if (dup) {
+        // 이미 있는 곳이면 비어 있는 위치·링크·지역만 채워요(지도 보기용).
+        if (dup.lat == null && place.lat != null) {
+          const i = next.indexOf(dup);
+          next[i] = { ...dup, lat: place.lat, lng: place.lng, url: dup.url || place.url, region: dup.region || place.region };
+          report.located.push(place.name);
+        }
+        report.duplicates.push(place.name);
+        continue;
+      }
       next.push(place);
       report.added.push(place.name);
     }
@@ -255,6 +279,8 @@
       return {
         name, url: validUrl(url), line: i + 1,
         region: regionFromAddress(loc.Address || loc.address || ''),
+        lng: f.geometry && f.geometry.coordinates && f.geometry.coordinates[0],
+        lat: f.geometry && f.geometry.coordinates && f.geometry.coordinates[1],
         note: p.Comment || p.comment || '',
         list: listName || '', source: 'google-json',
       };
@@ -373,7 +399,7 @@
     STORAGE_KEY, LEGACY_KEY, SETTINGS_KEY, LIVE_CACHE_KEY, TYPES, GROUPS, OUTING, REGIONS, SEED,
     label, groupOf, groupInfo, infer, regionFromAddress, inRegion, validUrl, canonicalUrl, mapSource, normName, isDup,
     makePlace, loadPlaces, savePlaces, mergeImport, previewImport, exportBackup, parseBackup,
-    parseCsv, fromCsv, fromGeoJson, fromShareText, filterPlaces, discoverPool, pickOne, shuffle,
+    parseCsv, fromCsv, fromGeoJson, fromShareText, filterPlaces, discoverPool, pickOne, shuffle, regionToken,
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.WeekendCore = api;

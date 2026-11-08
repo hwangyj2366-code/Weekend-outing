@@ -70,7 +70,7 @@ async function naverList(url) {
   const rows = json.bookmarkList || json.bookmarks || json.list || json.items || [];
   const folder = json.folder || json.folderInfo || {};
   return {
-    provider: 'naver', listName: folder.name || folder.title || '네이버지도 리스트',
+    provider: 'naver', listName: folder.name || folder.title || '네이버지도 리스트', listUrl: url,
     places: rows.filter((b) => b.available !== false).map((b) => {
       const name = String(b.displayName || b.name || '').trim();
       const sid = b.sid || b.placeId || b.id;
@@ -80,6 +80,7 @@ async function naverList(url) {
         address: b.address || b.roadAddress || '',
         tags: [b.mcidName, b.category, b.categoryName].filter(Boolean).join(' '),
         note: b.memo || '',
+        lng: b.px, lat: b.py, // 네이버는 경도(px)·위도(py)
       };
     }).filter((p) => p.name),
   };
@@ -109,7 +110,7 @@ async function googleList(url) {
   const raw = (root && root[8]) || [];
   if (!Array.isArray(raw) || !raw.length) throw new ListError('리스트에 장소가 없거나 비공개예요. 구글지도에서 리스트 링크 공유를 켜 주세요.', 404);
   return {
-    provider: 'google', listName: (root && root[4]) || '구글지도 리스트',
+    provider: 'google', listName: (root && root[4]) || '구글지도 리스트', listUrl: url,
     places: raw.map((p) => {
       const info = (p && p[1]) || [];
       const name = String((p && p[2]) || '').trim();
@@ -121,6 +122,8 @@ async function googleList(url) {
         url: `https://www.google.com/maps/search/?api=1&query=${q}` + (typeof placeId === 'string' ? `&query_place_id=${placeId}` : ''),
         note: typeof p[3] === 'string' ? p[3] : '',
         tags: '',
+        lat: Array.isArray(info[5]) ? info[5][2] : null,
+        lng: Array.isArray(info[5]) ? info[5][3] : null,
       };
     }).filter((p) => p.name),
   };

@@ -11,6 +11,8 @@ const APP = 'WeekendOuting';
 const RLTE = 'https://apis.data.go.kr/B551011/TarRlteTarService1';
 const KOR = 'https://apis.data.go.kr/B551011/KorService2';
 const CACHE_MS = 12 * 60 * 60 * 1000;
+// 공공데이터포털 응답이 30초 가까이 걸릴 때가 있어 넉넉히 기다려요(전체 계산은 백그라운드에서 몇 분 걸려요).
+const CALL_MS = 45000;
 
 // 시군구 코드(법정동 기준). 인기 순위는 이 목록이 있는 지역만 계산해요.
 const SIGNGU = {
@@ -45,7 +47,7 @@ export class GatewayError extends Error {}
 
 async function call(key, base, op, params) {
   const q = new URLSearchParams({ serviceKey: key, MobileOS: 'ETC', MobileApp: APP, _type: 'json', pageNo: '1', numOfRows: '50', ...params });
-  const res = await fetch(`${base}/${op}?${q}`, { signal: AbortSignal.timeout(8000) });
+  const res = await fetch(`${base}/${op}?${q}`, { signal: AbortSignal.timeout(CALL_MS) });
   const text = await res.text();
   let json;
   try { json = JSON.parse(text); } catch { throw new Error(`${op}: JSON이 아닌 응답`); }
@@ -64,7 +66,8 @@ async function pool(list, n, fn) {
   await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => {
     while (i < list.length) {
       const x = list[i++];
-      try { out.push(await fn(x)); } catch (e) { if (e instanceof GatewayError) throw e; /* 한 지역 실패는 건너뜀 */ }
+      // 일부 시군구는 제공기관 서버가 간헐적으로 04 오류를 내요. 한 곳 실패는 건너뛰고 나머지로 계산합니다.
+      try { out.push(await fn(x)); } catch { /* 건너뜀 */ }
     }
   }));
   return out;
@@ -112,6 +115,9 @@ async function intro(key, contentId, typeId) {
     restdate: pick('restdate', 'restdateculture', 'restdateleports'),
     infocenter: pick('infocenter', 'infocenterculture', 'infocenterleports', 'sponsor1tel'),
     reservation: pick('reservation', 'reservationlodging', 'bookingplace'),
+    usefee: pick('usefee', 'usetimefestival', 'usefeeleports'),
+    parking: pick('parking', 'parkingculture', 'parkingleports'),
+    babycarriage: pick('chkbabycarriage', 'chkbabycarriageculture', 'chkbabycarriageleports'),
   };
 }
 async function enrich(key, p, prov) {
@@ -120,6 +126,7 @@ async function enrich(key, p, prov) {
   if (!hit) return;
   if (hit.addr1) p.region = regionOf(hit.addr1, PROV[prov]) || p.region;
   if (hit.firstimage) p.image = https(hit.firstimage);
+  if (hit.mapy && hit.mapx) { p.lat = Number(hit.mapy); p.lng = Number(hit.mapx); }
   const info = await intro(key, String(hit.contentid), String(hit.contenttypeid)).catch(() => null);
   if (info) p.hours = { ...info, source: '한국관광공사 국문 관광정보', updated: dash(hit.modifiedtime) };
 }
@@ -175,7 +182,7 @@ async function festivals(key, provs) {
       if (!name || !s || !e || s > w.sun || e < w.sat || NOT_FOR_KIDS.test(name)) continue;
       out.push({
         id: 'fest-' + it.contentid, name, category: '축제·행사', env: '야외', url: '',
-        region: regionOf(it.addr1, PROV[p]), image: https(it.firstimage),
+        region: regionOf(it.addr1, PROV[p]), image: https(it.firstimage), lat: Number(it.mapy) || null, lng: Number(it.mapx) || null,
         note: `${dash(s)} ~ ${dash(e)} 진행`,
         popularity: { kind: 'festival', label: '이번 주말 열리는 행사', source: '한국관광공사 행사정보', basis: `${dash(w.sat)} 주말`, score: 100 },
         hours: { usetime: `${dash(s)} ~ ${dash(e)}`, restdate: '', infocenter: strip(it.tel), reservation: '', source: '한국관광공사 행사정보', updated: dash(it.modifiedtime) },
@@ -194,7 +201,7 @@ async function listed(key, provs) {
       if (!category || NOT_FOR_KIDS.test(name)) continue;
       out.push({
         id: 'kto-' + it.contentid, name, category, env: ENV[category], url: '',
-        region: regionOf(it.addr1, PROV[p]), image: https(it.firstimage),
+        region: regionOf(it.addr1, PROV[p]), image: https(it.firstimage), lat: Number(it.mapy) || null, lng: Number(it.mapx) || null,
         note: '한국관광공사 관광정보에 등록된 곳이에요. (인기 순위 정보 없음)',
         hours: { usetime: '', restdate: '', infocenter: '', reservation: '', source: '한국관광공사 국문 관광정보', updated: dash(it.modifiedtime) },
       });
