@@ -4,6 +4,10 @@
   const C = window.WeekendCore;
   const CONFIG = window.WEEKEND_CONFIG || {};
   const API = String(CONFIG.apiBase ?? 'api').replace(/\/+$/, '');
+  // 배포 사이트: 인기 장소는 매일 미리 만든 파일(data/), 리스트 읽기는 Supabase 함수
+  const DATA = CONFIG.dataBase ? String(CONFIG.dataBase).replace(/\/+$/, '') : '';
+  const IMPORT_LIST = CONFIG.importListUrl || `${API}/import-list`;
+  const dataRegion = (r) => (['seoul', 'gyeonggi', 'all'].includes(r) ? 'sg' : r); // 서울·경기·전국은 한 파일을 지역으로 걸러 써요
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const LIVE_TTL = 12 * 60 * 60 * 1000;
@@ -396,7 +400,7 @@
     if (!$('importDlg').open) $('importDlg').showModal();
   }
   async function fetchList(url) {
-    const res = await fetch(`${API}/import-list?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(25000) });
+    const res = await fetch(`${IMPORT_LIST}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(25000) });
     const data = await res.json().catch(() => null);
     if (!res.ok || !data || data.error) {
       if (res.status === 404 && !data) throw new Error('리스트 읽기 서버가 연결되지 않았어요(README의 서버 설정 참고). 장소 공유 문구로 붙여 넣거나 파일로 가져와 주세요.');
@@ -623,6 +627,7 @@
     if (/timeout|aborted| 04 |HTTP_ERROR/i.test(m)) return '한국관광공사 서버가 응답하지 않아요. 잠시 뒤 다시 불러와 주세요.';
     if (/ 30 |NOT_REGISTERED/i.test(m)) return '인증키가 아직 등록되지 않았어요(발급 후 1시간 정도 걸려요).';
     if (/ 22 |LIMITED/i.test(m)) return '오늘 호출 한도를 넘었어요. 내일 다시 시도해 주세요.';
+    if (DATA && /404/.test(m)) return '이 지역의 인기 장소 데이터가 아직 없어요(매일 아침 자동으로 만들어져요).';
     if (/TOUR_API_KEY|503|404/.test(m)) return '서버에 인증키가 설정되지 않았어요.';
     return m.slice(0, 100);
   }
@@ -643,10 +648,12 @@
     const region = ui.region;
     const cache = readCache();
     if (!force && cache && cache.region === region && Date.now() - new Date(cache.data.fetchedAt).getTime() < LIVE_TTL) { useLive(cache.data, false); render(); return; }
-    if (API === '' || CONFIG.disableLive) { live = { status: 'off', places: [], meta: null }; render(); return; }
+    if ((API === '' && !DATA) || CONFIG.disableLive) { live = { status: 'off', places: [], meta: null }; render(); return; }
     live = { status: 'loading', places: [], meta: null }; render();
     try {
-      const res = await fetch(`${API}/discover?region=${encodeURIComponent(region)}${force === true ? '&refresh=1' : ''}`, { signal: AbortSignal.timeout(45000) });
+      const res = DATA
+        ? await fetch(`${DATA}/discover-${dataRegion(region)}.json`, { cache: force ? 'reload' : 'default', signal: AbortSignal.timeout(20000) })
+        : await fetch(`${API}/discover?region=${encodeURIComponent(region)}${force === true ? '&refresh=1' : ''}`, { signal: AbortSignal.timeout(45000) });
       const data = await res.json().catch(() => null);
       if (res.status === 202 && data && data.pending) {
         // 서버가 처음 데이터를 만드는 중(공공데이터 응답이 느려 몇 분 걸려요) → 1분 뒤 다시 확인

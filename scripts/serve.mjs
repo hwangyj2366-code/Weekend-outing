@@ -7,12 +7,14 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { discover } from '../supabase/functions/_shared/tour.js';
+import { discover, mergeDiscover } from '../supabase/functions/_shared/tour.js';
 import { importList } from '../supabase/functions/_shared/lists.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(here, '..', 'dist');
-const port = Number(process.argv[2] || process.env.PORT || 8090);
+// --root site 로 배포용으로 만든 폴더를 확인할 수 있어요 (node scripts/serve.mjs 8091 --root site)
+const rootAt = process.argv.indexOf('--root');
+const root = path.resolve(here, '..', rootAt > 0 ? process.argv[rootAt + 1] : 'dist');
+const port = Number(process.argv.slice(2).find((a) => /^\d+$/.test(a)) || process.env.PORT || 8090);
 let KEY = process.env.TOUR_API_KEY || '';
 try { KEY ||= (/^\s*TOUR_API_KEY\s*=\s*(\S+)/m.exec(readFileSync(path.resolve(here, '..', '.env.local'), 'utf8')) || [])[1] || ''; } catch { /* 키 없음 → 기본 추천만 */ }
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
@@ -29,21 +31,8 @@ function refresh(region) {
   const started = Date.now();
   console.log(`[discover] ${region} 데이터 만들기 시작`);
   running.set(region, discover(KEY, region, true)
-    .then(async (body) => {
-      // 공공데이터 서버가 불안정하면 이번 결과가 적게 나올 수 있어요. 이전 결과와 합쳐(이번 것 우선) 목록이 줄지 않게 하고,
-      // 같은 장소는 비어 있는 위치·운영 정보를 이전 결과로 채워요. 7일 넘은 이전 결과는 버려요.
-      const prev = await readCache(region);
-      if (prev && Date.now() - new Date(prev.fetchedAt).getTime() < 7 * 24 * 3600 * 1000) {
-        const key = (p) => String(p.name).replace(/s/g, '');
-        const old = new Map(prev.places.map((p) => [key(p), p]));
-        body.places = body.places.map((p) => {
-          const o = old.get(key(p));
-          return o ? { ...o, ...p, lat: p.lat ?? o.lat, lng: p.lng ?? o.lng, image: p.image || o.image, hours: p.hours || o.hours } : p;
-        });
-        const have = new Set(body.places.map(key));
-        body.places.push(...prev.places.filter((p) => !have.has(key(p))));
-        if (!body.popularityNote && prev.popularityNote) body.popularityNote = prev.popularityNote;
-      }
+    .then(async (fresh) => {
+      const body = mergeDiscover(await readCache(region), fresh);
       await fs.mkdir(CACHE_DIR, { recursive: true });
       await fs.writeFile(path.join(CACHE_DIR, `discover-${region}.json`), JSON.stringify(body));
       console.log(`[discover] ${region} 완료: ${body.places.length}곳, ${Math.round((Date.now() - started) / 1000)}초, 실패 호출 ${body.errors.length}건`);

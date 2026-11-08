@@ -242,3 +242,20 @@ export async function discover(key, region = 'sg', force = false) {
   memo.set(region, { at: Date.now(), body });
   return body;
 }
+
+// 공공데이터 서버가 불안정하면 이번 결과가 적게 나올 수 있어요. 이전 결과와 합쳐(이번 것 우선) 목록이 줄지 않게 하고,
+// 같은 장소는 비어 있는 위치·운영 정보를 이전 결과로 채워요. maxAgeDays보다 오래된 이전 결과는 버려요.
+export function mergeDiscover(prev, body, maxAgeDays = 7) {
+  if (!prev || !Array.isArray(prev.places) || Date.now() - new Date(prev.fetchedAt).getTime() > maxAgeDays * 24 * 3600 * 1000) return body;
+  const key = (p) => String(p.name).replace(/\s/g, '');
+  const old = new Map(prev.places.map((p) => [key(p), p]));
+  const places = body.places.map((p) => {
+    const o = old.get(key(p));
+    return o ? { ...o, ...p, lat: p.lat ?? o.lat, lng: p.lng ?? o.lng, image: p.image || o.image, hours: p.hours || o.hours } : p;
+  });
+  const have = new Set(places.map(key));
+  // 지난 행사(이번 주말과 겹치지 않는 축제)는 이어받지 않아요.
+  const w = weekendOf();
+  const keep = prev.places.filter((p) => !have.has(key(p)) && !(p.popularity && p.popularity.kind === 'festival' && p.popularity.basis !== `${w.sat.slice(0, 4)}-${w.sat.slice(4, 6)}-${w.sat.slice(6, 8)} 주말`));
+  return { ...body, places: [...places, ...keep], popularityNote: body.popularityNote || prev.popularityNote };
+}

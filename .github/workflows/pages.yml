@@ -1,0 +1,51 @@
+# 주말에 어디가지? — GitHub Pages 배포
+# - main에 올릴 때마다, 그리고 매일 아침 5시(한국 시간)에 인기 장소 데이터를 새로 만들어 함께 배포해요.
+# - 공공데이터 인증키는 저장소 Settings → Secrets and variables → Actions 의 TOUR_API_KEY 에만 넣어요.
+name: 사이트 배포
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 20 * * *' # UTC 20:00 = 한국 05:00
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 셀프 테스트
+        run: node scripts/selftest.mjs
+      - name: 사이트와 인기 장소 데이터 만들기
+        run: node scripts/build-site.mjs site
+        env:
+          TOUR_API_KEY: ${{ secrets.TOUR_API_KEY }}
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

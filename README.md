@@ -56,16 +56,23 @@ npm start
 
 ## 배포 (휴대폰에서 어디서나 쓰려면)
 
-1. `dist/`를 정적 호스팅에 올리기 — **이전 주소(같은 도메인)**에 올려야 그 브라우저의 v1 즐겨찾기(`weekend-places-v1`)를 자동으로 읽어요. 안드로이드 공유 메뉴·설치는 https 주소에서만 돼요.
-2. Supabase 함수 배포
+구성: **GitHub Pages**(앱 화면, https) + **GitHub Actions**(매일 05시 인기 장소 데이터 만들기) + **Supabase 함수 `import-list`**(지도 리스트 링크 읽기).
+인기 장소는 공공데이터 응답이 느려 앱이 직접 부르지 않고, Actions가 미리 만든 `data/discover-<지역>.json`을 사이트와 함께 올려요(이전 배포분과 합쳐 목록이 줄지 않게).
+
+1. **GitHub 저장소** — 공개(public) 저장소 `weekend-outing`을 만들고 이 폴더를 `main`으로 올려요.
+2. **인증키** — 저장소 Settings → Secrets and variables → Actions → New repository secret: `TOUR_API_KEY` = 공공데이터포털 일반 인증키(Decoding)
+3. **Pages 켜기** — Settings → Pages → Build and deployment → Source: **GitHub Actions**. 이후 push할 때마다, 매일 아침 자동 배포돼요(Actions 탭에서 수동 실행도 가능).
+4. **Supabase 함수** — 새 프로젝트(리전 **Seoul**)를 만들고:
    ```bash
-   npx supabase login
-   npx supabase link --project-ref <project-ref>
-   npx supabase secrets set TOUR_API_KEY=<공공데이터포털 일반 인증키(Decoding)>
-   npx supabase functions deploy discover --no-verify-jwt
-   npx supabase functions deploy import-list --no-verify-jwt
+   npx supabase functions deploy import-list --project-ref <project-ref> --no-verify-jwt
    ```
-3. `dist/config.js`의 `apiBase`를 `https://<project-ref>.supabase.co/functions/v1`로 (공개 주소라 넣어도 안전, 키는 넣지 마세요)
+   (`SUPABASE_ACCESS_TOKEN` 환경 변수 또는 `npx supabase login` 필요)
+5. `dist/config.js`의 `importListUrl`을 `https://<project-ref>.supabase.co/functions/v1/import-list`로 바꾸고 push (공개 주소라 넣어도 안전, 키는 넣지 마세요)
+
+배포 주소: `https://<GitHub 아이디>.github.io/weekend-outing/`
+배포 전 확인: `node scripts/build-site.mjs site` → `node scripts/serve.mjs 8091 --root site` → `http://localhost:8091/?site` (`?site`를 붙이면 PC에서도 배포 사이트처럼 동작)
+
+> 즐겨찾기는 기기·주소마다 따로 저장돼요. PC(localhost)에 모아 둔 즐겨찾기는 설정 → **백업 파일 저장** 후 휴대폰의 배포 사이트에서 **백업 불러오기**로 옮기거나, 리스트 링크로 다시 가져오면 돼요.
 
 공공데이터포털 활용신청: ‘한국관광공사_국문 관광정보 서비스_GW’, ‘한국관광공사_관광지별 연관 관광지 정보’ (같은 인증키 하나로 둘 다 사용)
 
