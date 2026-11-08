@@ -14,9 +14,15 @@ assert.equal(C.infer('난지캠핑장'), '캠핑장');
 assert.equal(C.infer('남서울CC'), '골프·레저');
 assert.equal(C.infer('키즈카페 점프'), '체험·놀이');
 assert.equal(C.infer('을지면옥'), '맛집·카페');
+assert.equal(C.infer('경복궁'), '여행지');
+assert.equal(C.infer('해운대해수욕장'), '여행지');
+assert.equal(C.infer('서울빛초롱축제'), '축제·행사');
+assert.equal(C.infer('OO가든', '', '음식점>한식'), '맛집·카페');
+assert.equal(C.groupOf('과학관'), 'kids');
+assert.equal(C.groupOf('맛집·카페'), 'food');
 assert.equal(C.infer('가평 숲속 펜션'), '숙소·펜션');
 assert.equal(C.infer('서울어린이대공원'), '자연·공원');
-ok('카테고리 자동 분류 (캠핑·과학관·골프·맛집·펜션 등)');
+ok('카테고리 자동 분류 + 큰 분류(아이랑/캠핑장/여행지/음식점/숙소/기타), 네이버 업종명 활용');
 
 // 2. Takeout CSV: 추가 / 중복 / 오류 / 경고
 const csv = C.fromCsv(fx('want-to-go.csv'), 'want-to-go');
@@ -54,6 +60,10 @@ https://maps.app.goo.gl/onlylink`);
 assert.equal(share.length, 4);
 assert.deepEqual(share.slice(0, 3).map((x) => x.name), ['국립과천과학관', '서울숲', '서울상상나라']);
 assert.equal(share[0].region, '경기 과천');
+assert.equal(share[1].region, '', '서울숲은 지역 이름이 아님');
+assert.equal(C.regionFromAddress('대한민국 서울특별시 종로구 창경궁로 215'), '서울 종로구');
+assert.equal(C.regionFromAddress('제주특별자치도 서귀포시 성산읍'), '제주 서귀포');
+assert.equal(C.regionFromAddress('Gyeonggi-do, Gwacheon-si'), '경기');
 assert.ok(share[3].error);
 ok('공유 문구: 여러 장소를 나눠 인식, 주소→지역, 이름 없는 링크는 오류로 안내');
 
@@ -82,20 +92,42 @@ ok('새로운 장소: 기본 추천 8곳, 이미 저장한 서울숲·국립어�
 // 8. 필터: 나들이 외 제외/포함, 실내·야외, 지역, 빈 후보
 const all = geo.next;
 const base = { region: 'all' };
-assert.ok(!C.filterPlaces(all, base).some((p) => ['남서울CC', '을지면옥', '가평 숲속 펜션'].includes(p.name)));
-assert.ok(C.filterPlaces(all, { ...base, includeOther: true }).some((p) => p.name === '남서울CC'));
-assert.ok(C.filterPlaces(all, { ...base, category: '맛집·카페' }).some((p) => p.name === '을지면옥'));
+assert.ok(!C.filterPlaces(all, { ...base, outingOnly: true }).some((p) => ['남서울CC', '을지면옥', '가평 숲속 펜션'].includes(p.name)));
+assert.ok(C.filterPlaces(all, base).some((p) => p.name === '남서울CC'));
+assert.deepEqual(C.filterPlaces(all, { ...base, group: 'food' }).map((p) => p.name), ['을지면옥']);
+assert.deepEqual(C.filterPlaces(all, { ...base, group: 'camp' }).map((p) => p.name), ['난지캠핑장']);
 assert.deepEqual(C.filterPlaces(C.SEED, { region: 'sg', env: '실내', category: '' }).map((p) => p.category).filter((c) => !['과학관', '박물관', '체험·놀이'].includes(c)), []);
 assert.equal(C.filterPlaces(C.SEED, { region: 'sg', category: '캠핑장' }).length, 2);
 assert.equal(C.filterPlaces(C.SEED, { region: 'jeju' }).length, 0);
 assert.equal(C.filterPlaces(C.SEED, { region: 'sg', category: '캠핑장', env: '실내' }).length, 0);
 assert.equal(C.pickOne([], null), null);
-ok('필터: 골프·맛집·펜션 기본 제외/포함, 실내·야외, 지역, 후보 없음 → pick=null');
+ok('필터: 나들이 후보에서 골프·음식점·숙소 제외, 큰 분류별 보기, 실내·야외, 지역, 후보 없음 → pick=null');
 
 // 9. 한 곳 골라줘는 현재 후보에서만, 직전 결과 피하기
 const camps = C.filterPlaces(C.SEED, { region: 'sg', category: '캠핑장' });
 for (let i = 0; i < 20; i++) assert.equal(C.pickOne(camps, null).category, '캠핑장');
 assert.notEqual(C.pickOne(camps, camps[0].id).id, camps[0].id);
 ok('한 곳 골라줘: 조건에 맞는 후보에서만, 다시 뽑으면 다른 곳');
+
+// 10. 가져오기 미리보기 + 백업
+const prev = C.previewImport(r.next, [{ name: '서울숲', url: '' }, { name: '새 캠핑장', url: 'https://naver.me/n1' }, { name: '새 캠핑장', url: 'https://naver.me/n1' }, { error: 'x' }, { name: '하늘공원', address: '서울특별시 마포구 하늘공원로 84' }]);
+assert.deepEqual(prev.map((x) => x.status), ['new', 'new', 'dup', 'error', 'new']);
+assert.equal(prev[4].place.region, '서울 마포구');
+const back = C.parseBackup(C.exportBackup(geo.next));
+assert.equal(C.mergeImport([], back).report.added.length, geo.next.length);
+assert.equal(C.mergeImport(geo.next, back).report.added.length, 0);
+assert.throws(() => C.parseBackup('{"x":1}'));
+ok('가져오기 미리보기(새로/중복/오류), 주소→지역, 백업 내보내기·불러오기(중복 없음)');
+
+// 11. 네이버 리스트 공유 링크가 거쳐 가는 주소들에서 리스트 id 찾기 (실제 naver.me 링크에서 관찰한 모양)
+const { naverShareId } = await import('../supabase/functions/_shared/lists.js');
+const sid = 'be68b8f55f3a474ca4fe88ebb7a50d4b';
+assert.equal(naverShareId(`https://map.naver.com/p/favorite/sharedPlace/folder/${sid}`), sid);
+assert.equal(naverShareId(`https://m.map.naver.com/appLink.naver?version=2&appTargetPage=bookmark/share&id=${sid}&appSchemeName=nmap&fallbackUrl=https%3A%2F%2Fpages.map.naver.com%2Fsave-pages%2Fweb%2Fdetail-list%2F${sid}%3Fat%3Du`), sid);
+assert.equal(naverShareId(`https://pages.map.naver.com/save-pages/web/detail-list/${sid}?at=u`), sid);
+assert.equal(naverShareId('https://map.naver.com/p/entry/place/1278290240'), '');
+assert.equal(C.infer('이지캠프 양주'), '캠핑장');
+assert.equal(C.infer('아쿠아플라넷 일산'), '체험·놀이');
+ok('네이버 리스트 링크(리다이렉트 3단계)에서 id 찾기, 장소 하나 링크는 구분');
 
 console.log(`\n모든 확인 통과 (${n}개)`);

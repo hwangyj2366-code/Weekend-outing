@@ -7,31 +7,46 @@
   const SETTINGS_KEY = 'weekend-settings-v1';
   const LIVE_CACHE_KEY = 'weekend-live-cache-v1';
 
-  // 나들이 카테고리(기본 추천 대상) — 키 이름은 v1 데이터와 호환되도록 그대로 둡니다.
+  // 세부 분류 — 키 이름은 v1 데이터와 호환되도록 그대로 둡니다('맛집·카페' 등).
   const TYPES = {
-    '캠핑장': { icon: '⛺', bg: '#e5ebc8', env: '야외', outing: true },
-    '박물관': { icon: '🏛️', bg: '#fae5c2', env: '실내', outing: true, label: '박물관·미술관' },
-    '과학관': { icon: '🔭', bg: '#dfe8fb', env: '실내', outing: true, label: '어린이과학관·과학관' },
-    '체험·놀이': { icon: '🎨', bg: '#f9dfe3', env: '실내', outing: true },
-    '자연·공원': { icon: '🌳', bg: '#d7ebe0', env: '야외', outing: true },
-    // 아이 나들이와 목적이 다를 수 있는 곳 — 보관은 하되 기본 추천에서는 빠져요.
-    '맛집·카페': { icon: '🍽️', bg: '#f3e3d3', env: '', outing: false },
-    '숙소·펜션': { icon: '🏡', bg: '#e8e2f3', env: '', outing: false },
-    '골프·레저': { icon: '⛳', bg: '#dceee0', env: '야외', outing: false },
-    '기타': { icon: '📍', bg: '#eee7dd', env: '', outing: false },
+    '박물관': { icon: '🏛️', bg: '#fae5c2', env: '실내', group: 'kids', label: '박물관·미술관' },
+    '과학관': { icon: '🔭', bg: '#dfe8fb', env: '실내', group: 'kids', label: '어린이과학관·과학관' },
+    '체험·놀이': { icon: '🎨', bg: '#f9dfe3', env: '실내', group: 'kids' },
+    '자연·공원': { icon: '🌳', bg: '#d7ebe0', env: '야외', group: 'kids' },
+    '캠핑장': { icon: '⛺', bg: '#e5ebc8', env: '야외', group: 'camp' },
+    '여행지': { icon: '🧳', bg: '#dcebf2', env: '야외', group: 'trip', label: '여행지·명소' },
+    '축제·행사': { icon: '🎪', bg: '#fbe2cf', env: '야외', group: 'trip' },
+    '맛집·카페': { icon: '🍽️', bg: '#f3e3d3', env: '실내', group: 'food', label: '음식점·카페' },
+    '숙소·펜션': { icon: '🏡', bg: '#e8e2f3', env: '', group: 'stay', label: '숙소·펜션' },
+    '골프·레저': { icon: '⛳', bg: '#dceee0', env: '야외', group: 'etc' },
+    '기타': { icon: '📍', bg: '#eee7dd', env: '', group: 'etc' },
   };
-  const OUTING = Object.keys(TYPES).filter((k) => TYPES[k].outing);
+  // 큰 분류. outing=true인 묶음만 '한 곳 골라줘'의 기본 후보가 돼요.
+  const GROUPS = [
+    { id: 'kids', label: '아이랑 가볼만한 곳', short: '아이랑', icon: '🧒', outing: true },
+    { id: 'camp', label: '캠핑장', short: '캠핑장', icon: '⛺', outing: true },
+    { id: 'trip', label: '여행지', short: '여행지', icon: '🧳', outing: true },
+    { id: 'food', label: '음식점·카페', short: '음식점', icon: '🍽️', outing: false },
+    { id: 'stay', label: '숙소', short: '숙소', icon: '🏡', outing: false },
+    { id: 'etc', label: '기타', short: '기타', icon: '📍', outing: false },
+  ];
+  const groupOf = (c) => (TYPES[c] || TYPES['기타']).group;
+  const groupInfo = (id) => GROUPS.find((g) => g.id === id) || GROUPS[GROUPS.length - 1];
+  const OUTING = Object.keys(TYPES).filter((k) => groupInfo(TYPES[k].group).outing);
   const label = (c) => (TYPES[c] && TYPES[c].label) || c;
 
   const RULES = [
-    ['골프·레저', /골프|컨트리\s?클럽|\bcc\b|스크린골프|golf|country club/i],
-    ['캠핑장', /캠핑|야영|글램핑|오토캠|카라반|camp/i],
+    ['골프·레저', /골프|컨트리\s?클럽|\bcc\b|스크린골프|볼링|당구|golf|country club/i],
+    ['캠핑장', /캠핑|야영|글램핑|오토캠|카라반|캠프(?=\s|$)|camp/i],
     ['과학관', /과학관|과학원|천문|사이언스|플라네타리움|science|planetarium/i],
-    ['박물관', /박물관|미술관|기념관|역사관|전시관|뮤지엄|museum|gallery|갤러리/i],
-    ['숙소·펜션', /펜션|호텔|리조트|모텔|민박|게스트하우스|풀빌라|스테이|hotel|resort|pension|hostel/i],
-    ['자연·공원', /공원|수목원|식물원|동물원|휴양림|숲|생태|습지|해변|해수욕장|계곡|농장|목장|park|zoo|arboretum|forest|beach/i],
-    ['체험·놀이', /키즈|어린이|체험|놀이|상상나라|아쿠아리움|수족관|테마파크|랜드|월드|트램폴린|방방|kids|aquarium|playground/i],
-    ['맛집·카페', /식당|맛집|카페|커피|베이커리|빵|국밥|냉면|갈비|고기|치킨|피자|분식|횟집|레스토랑|면옥|막국수|떡볶이|브런치|restaurant|cafe|coffee|bakery|bistro/i],
+    ['박물관', /박물관|미술관|기념관|역사관|전시관|뮤지엄|아트파크|아트센터|museum|gallery|갤러리/i],
+    ['숙소·펜션', /펜션|호텔|리조트|모텔|민박|게스트하우스|풀빌라|스테이|숙박|hotel|resort|pension|hostel/i],
+    ['축제·행사', /축제|페스티벌|박람회|festival/i],
+    ['자연·공원', /공원|수목원|식물원|동물원|휴양림|숲|생태|습지|계곡|농장|목장|park|zoo|arboretum|forest/i],
+    ['체험·놀이', /키즈|어린이|체험|놀이|상상나라|아쿠아|수족관|워터파크|마법학교|치즈학교|테마파크|랜드|월드|트램폴린|방방|kids|aquarium|playground/i],
+    ['맛집·카페', /음식점|식당|맛집|카페|커피|디저트|베이커리|빵|국밥|냉면|갈비|고기|치킨|피자|분식|횟집|레스토랑|면옥|막국수|떡볶이|브런치|한식|중식|일식|양식|restaurant|cafe|coffee|bakery|bistro/i],
+    ['여행지', /관광|명소|여행|궁$|궁궐|성곽|한옥마을|전망대|타워|해변|해수욕장|섬$|폭포|케이블카|스카이워크|둘레길|호수|온천|사찰|산성|beach|island|tower|palace|temple/i],
+    ['체험·놀이', /여가/], // 네이버 업종 '여가'(키즈카페·놀이시설 등) — 이름으로 못 정할 때만
   ];
   function infer(...texts) {
     const s = texts.filter(Boolean).join(' ');
@@ -51,24 +66,29 @@
     { id: 'jeju', label: '제주', match: ['제주'] },
     { id: 'all', label: '전국', match: null },
   ];
-  const PROVINCES = [
-    [/^(서울|seoul)/i, '서울'], [/^(부산|busan)/i, '부산'], [/^(대구|daegu)/i, '대구'], [/^(인천|incheon)/i, '인천'],
-    [/^(광주광역시|광주$|gwangju)/i, '광주'], [/^(대전|daejeon)/i, '대전'], [/^(울산|ulsan)/i, '울산'], [/^(세종|sejong)/i, '세종'],
-    [/^(경기|gyeonggi)/i, '경기'], [/^(강원|gangwon)/i, '강원'], [/^(충청북도|충북|chungcheongbuk)/i, '충북'],
-    [/^(충청남도|충남|chungcheongnam)/i, '충남'], [/^(전라북도|전북|jeollabuk|jeonbuk)/i, '전북'],
-    [/^(전라남도|전남|jeollanam)/i, '전남'], [/^(경상북도|경북|gyeongsangbuk)/i, '경북'],
-    [/^(경상남도|경남|gyeongsangnam)/i, '경남'], [/^(제주|jeju)/i, '제주'],
-  ];
+  // 광역 이름(정식·줄임·영문) → 짧은 이름. "서울숲"처럼 이름이 붙은 단어는 지역으로 보지 않아요.
+  const PROV_WORDS = {
+    '서울': ['서울', 'seoul'], '부산': ['부산', 'busan'], '대구': ['대구', 'daegu'], '인천': ['인천', 'incheon'],
+    '광주': ['광주', 'gwangju'], '대전': ['대전', 'daejeon'], '울산': ['울산', 'ulsan'], '세종': ['세종', 'sejong'],
+    '경기': ['경기', 'gyeonggi'], '강원': ['강원', 'gangwon'], '충북': ['충북', '충청북', 'chungcheongbuk'],
+    '충남': ['충남', '충청남', 'chungcheongnam'], '전북': ['전북', '전라북', 'jeollabuk', 'jeonbuk'],
+    '전남': ['전남', '전라남', 'jeollanam'], '경북': ['경북', '경상북', 'gyeongsangbuk'],
+    '경남': ['경남', '경상남', 'gyeongsangnam'], '제주': ['제주', 'jeju'],
+  };
+  function provinceOf(word) {
+    const w = String(word).toLowerCase().replace(/[,.]$/, '').replace(/(특별자치시|특별자치도|특별시|광역시|자치도|도|시|-do|-si)$/, '');
+    return Object.keys(PROV_WORDS).find((k) => PROV_WORDS[k].includes(w)) || '';
+  }
   // "대한민국 경기도 과천시 상하벌로 110" → "경기 과천"
   function regionFromAddress(addr) {
     if (!addr) return '';
     const words = String(addr).replace(/대한민국|south korea|republic of korea|,/gi, ' ').trim().split(/\s+/);
     for (let i = 0; i < words.length; i++) {
-      const hit = PROVINCES.find(([re]) => re.test(words[i]));
-      if (!hit) continue;
+      const prov = provinceOf(words[i]);
+      if (!prov) continue;
       const next = words[i + 1] || '';
       const city = /^[가-힣]+(시|군|구)$/.test(next) ? next.replace(/시$/, '') : '';
-      return [hit[1], city].filter(Boolean).join(' ');
+      return [prov, city].filter(Boolean).join(' ');
     }
     return '';
   }
@@ -260,7 +280,7 @@
       name = name.replace(/^[[(]?(네이버\s?지도|naver\s?map)[\])]?\s*/i, '').trim();
       if (!name) name = nameFromGoogleUrl(url);
       if (!name && !url) return;
-      if (!name) { out.push({ error: '이름을 찾지 못했어요: ' + url + ' — 위의 입력란에 이름과 함께 추가해 주세요' }); return; }
+      if (!name) { out.push({ url, linkOnly: true, error: '이름을 찾지 못한 링크예요: ' + url }); return; }
       out.push({ name, url: validUrl(url), region: regionFromAddress(addrLine || lines.join(' ')), source: 'share-text' });
     };
     for (const raw of String(text || '').split(/\r?\n/)) {
@@ -274,11 +294,36 @@
     return out;
   }
 
+  // 가져오기 미리보기: 저장 전 후보마다 new / dup / error 상태를 붙여요.
+  function previewImport(saved, candidates) {
+    const seen = [...saved];
+    return candidates.map((c, i) => {
+      if (c.error) return { key: 'e' + i, status: 'error', error: c.error, line: c.line, file: c.file };
+      const place = makePlace({ ...c, region: c.region || regionFromAddress(c.address) });
+      if (!place.name) return { key: 'e' + i, status: 'error', error: '장소 이름이 없어요', line: c.line };
+      const dup = seen.some((s) => isDup(s, place));
+      if (!dup) seen.push(place);
+      return { key: 'p' + i, status: dup ? 'dup' : 'new', place, warning: c.warning || '' };
+    });
+  }
+
+  // 백업 파일(JSON) 내보내기·불러오기
+  function exportBackup(places) {
+    return JSON.stringify({ app: 'weekend-outing', version: 2, exportedAt: new Date().toISOString(), places }, null, 1);
+  }
+  function parseBackup(text) {
+    const data = JSON.parse(String(text).replace(/^﻿/, ''));
+    const rows = Array.isArray(data) ? data : data && data.places;
+    if (!Array.isArray(rows)) throw new Error('주말에 어디가지? 백업 파일이 아니에요.');
+    return rows.filter((p) => p && p.name).map((p) => ({ ...p, source: p.source || 'backup' }));
+  }
+
   function filterPlaces(list, f) {
     const q = String(f.q || '').trim().toLowerCase();
     return list.filter((p) => {
       if (f.category && p.category !== f.category) return false;
-      if (!f.category && !f.includeOther && !(TYPES[p.category] || {}).outing) return false;
+      if (f.group && groupOf(p.category) !== f.group) return false;
+      if (!f.category && !f.group && f.outingOnly && !OUTING.includes(p.category)) return false;
       if (f.env && p.env !== f.env) return false;
       if (f.region) {
         const r = inRegion(p, f.region);
@@ -297,6 +342,12 @@
       pool.push(p);
     }
     return pool;
+  }
+
+  function shuffle(list, rnd) {
+    const r = rnd || Math.random, a = [...list];
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
   }
 
   function pickOne(list, avoidId, rnd) {
@@ -319,10 +370,10 @@
   }));
 
   const api = {
-    STORAGE_KEY, LEGACY_KEY, SETTINGS_KEY, LIVE_CACHE_KEY, TYPES, OUTING, REGIONS, SEED,
-    label, infer, regionFromAddress, inRegion, validUrl, canonicalUrl, mapSource, normName, isDup,
-    makePlace, loadPlaces, savePlaces, mergeImport, parseCsv, fromCsv, fromGeoJson, fromShareText,
-    filterPlaces, discoverPool, pickOne,
+    STORAGE_KEY, LEGACY_KEY, SETTINGS_KEY, LIVE_CACHE_KEY, TYPES, GROUPS, OUTING, REGIONS, SEED,
+    label, groupOf, groupInfo, infer, regionFromAddress, inRegion, validUrl, canonicalUrl, mapSource, normName, isDup,
+    makePlace, loadPlaces, savePlaces, mergeImport, previewImport, exportBackup, parseBackup,
+    parseCsv, fromCsv, fromGeoJson, fromShareText, filterPlaces, discoverPool, pickOne, shuffle,
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.WeekendCore = api;

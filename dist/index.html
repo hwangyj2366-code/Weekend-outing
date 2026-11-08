@@ -11,162 +11,281 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <style>
 *{box-sizing:border-box}
-:root{--ink:#193b2e;--muted:#526657;--line:#b9c7b7;--soft:#dedfd1;--paper:#fffdf5;--bg:#f8f7ef;--green:#214a36;--lime:#dbebad;--warn:#8a4b12}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;padding-bottom:env(safe-area-inset-bottom)}
-header,main,footer{max-width:1100px;margin:auto;padding:18px 16px}
-header,.row,.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-header,.row{justify-content:space-between}
-header strong{font-size:20px}
-.hero{background:var(--lime);border-radius:32px;padding:clamp(26px,6vw,70px);position:relative;overflow:hidden}
-.hero svg{position:absolute;right:-15px;bottom:0;width:48%;height:auto;pointer-events:none}
-.hero>div{position:relative;z-index:1}
-.eyebrow{letter-spacing:.17em;font-weight:800;font-size:12px}
-h1{font-size:clamp(38px,7vw,76px);line-height:1.08;letter-spacing:-.075em;margin:14px 0}
-h2{font-size:clamp(23px,4vw,29px);margin:0;letter-spacing:-.05em}
-h3{letter-spacing:-.04em}
-button,input,select,textarea{font:inherit}
-button,.link{cursor:pointer;border:1px solid var(--line);border-radius:30px;background:var(--paper);padding:10px 18px;min-height:46px;color:inherit;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px}
-button:disabled{opacity:.5;cursor:default}
-button.active,.primary{background:var(--green);color:#fff;border-color:var(--green)}
+:root{--ink:#193b2e;--muted:#526657;--line:#b9c7b7;--soft:#e2e3d6;--paper:#fffdf5;--bg:#f8f7ef;--green:#214a36;--lime:#dbebad;--warn:#8a4b12;--tab:68px}
+html{scroll-padding-bottom:calc(var(--tab) + 20px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;padding-bottom:calc(var(--tab) + env(safe-area-inset-bottom) + 16px)}
+.wrap{max-width:720px;margin:auto;padding:0 16px}
+button,input,select,textarea{font:inherit;color:inherit}
+button,.link{cursor:pointer;border:1px solid var(--line);border-radius:30px;background:var(--paper);padding:9px 16px;min-height:44px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+button:disabled{opacity:.45;cursor:default}
+.primary,button.active{background:var(--green);color:#fff;border-color:var(--green)}
+.ghost{border-color:transparent;background:transparent}
 .big{font-size:19px;padding:14px 26px;min-height:58px;font-weight:700}
-.conds{margin:12px 0 0;font-size:14px;color:#2c5140}
-.tabs{display:flex;gap:8px;margin:22px 0 12px}
-.tabs button{flex:1;font-weight:700;font-size:17px}
-.panel{background:var(--paper);border:1px solid var(--soft);border-radius:22px;padding:14px;display:grid;gap:12px}
-.panel label.inline{display:flex;align-items:center;gap:8px}
-.seg{display:flex;gap:6px;flex-wrap:wrap}
-.seg button{min-height:42px;padding:6px 14px}
-.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
-.chips button{white-space:nowrap;min-height:42px;padding:6px 14px}
-input,select,textarea{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fffefa;color:inherit;min-height:46px;max-width:100%}
-input[type=checkbox]{min-height:0;width:22px;height:22px;accent-color:var(--green)}
-.grow{flex:1;min-width:160px}
-.status{border-radius:14px;padding:10px 14px;font-size:14px;background:#eef3e2}
-.status.offline{background:#f6ecd9;color:var(--warn)}
-#grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:16px;margin-top:14px}
-.card{background:var(--paper);border:1px solid var(--soft);border-radius:22px;overflow:hidden;display:flex;flex-direction:column}
-.card.selected{outline:3px solid var(--green)}
-.art{height:112px;display:grid;place-items:center;font-size:56px;background:var(--bg);position:relative}
-.art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.badge{position:absolute;left:10px;top:10px;background:#fffdf5e8;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:700}
-.info{padding:16px;display:flex;flex-direction:column;flex:1}
-.info h3{margin:2px 0;font-size:22px}
-.info p{margin:8px 0 10px}
+.small{min-height:36px;padding:4px 12px;font-size:14px}
+input,select,textarea{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fffefa;min-height:46px;width:100%}
+input[type=checkbox]{width:22px;height:22px;min-height:0;accent-color:var(--green);flex:none}
+textarea{min-height:120px;resize:vertical}
+h1,h2,h3{letter-spacing:-.04em;margin:0}
 .muted{color:var(--muted);font-size:14px}
-.pop{font-size:14px;background:#fff2d6;border-radius:12px;padding:6px 10px;margin:4px 0 8px}
-details{font-size:14px;margin:0 0 10px}
-details summary{cursor:pointer;font-weight:700}
-.actions{margin-top:auto}
-.empty{background:var(--paper);border:1px dashed var(--line);border-radius:22px;padding:22px;text-align:center}
-.selbar{position:sticky;bottom:12px;z-index:5;margin-top:16px;display:none;justify-content:space-between;align-items:center;gap:10px;background:var(--green);color:#fff;border-radius:24px;padding:10px 12px 10px 20px;box-shadow:0 8px 24px #18342655}
-.selbar.show{display:flex}
-.selbar button{background:#fff;color:var(--green);border-color:#fff;font-weight:700}
-dialog{color:inherit;border:1px solid var(--line);border-radius:22px;background:var(--paper);width:min(94vw,600px);max-height:90vh;padding:20px}
-dialog::backdrop{background:#18342699}
-form label,.field{display:grid;gap:4px;margin:10px 0}
-textarea{min-height:110px;resize:vertical}
-hr{border:0;border-top:1px solid var(--soft);margin:18px 0}
-.report{border-radius:14px;background:#eef3e2;padding:10px 14px;font-size:14px;margin-top:10px}
+.row{display:flex;align-items:center;gap:10px}
+.between{justify-content:space-between}
+.wrapline{flex-wrap:wrap}
+.topbar{position:sticky;top:0;z-index:20;background:#f8f7efee;backdrop-filter:blur(8px);border-bottom:1px solid var(--soft)}
+.topbar .wrap{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:60px}
+.topbar strong{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pill{border:1px solid var(--line);border-radius:30px;background:var(--paper);min-height:40px;padding:4px 10px;width:auto;max-width:44vw;font-size:15px;flex:none}
+.hero{background:var(--lime);border-radius:28px;padding:24px 22px 22px;position:relative;overflow:hidden;margin-top:14px}
+.hero svg{position:absolute;right:-18px;bottom:0;width:52%;max-width:300px;opacity:.55;pointer-events:none}
+.hero>*{position:relative}
+.eyebrow{letter-spacing:.16em;font-weight:800;font-size:12px}
+.hero h1{font-size:clamp(32px,8vw,52px);line-height:1.1;letter-spacing:-.07em;margin:8px 0 16px}
+.hero .big{width:100%;max-width:360px}
+.filters{display:grid;gap:8px;margin:14px 0 4px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips button{min-height:40px;padding:6px 14px;flex:none}
+section.block{margin-top:26px}
+.sec-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}
+.sec-head h2{font-size:22px}
+.status{border-radius:14px;padding:8px 12px;font-size:13px;background:#eef3e2;margin:0 0 10px}
+.status.off{background:#f6ecd9;color:var(--warn)}
+.scroller{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 2px 10px;margin:0 -16px;padding-left:16px;padding-right:16px;scrollbar-width:none}
+.scroller::-webkit-scrollbar{display:none}
+.mini{flex:0 0 min(64vw,230px);scroll-snap-align:start;background:var(--paper);border:1px solid var(--soft);border-radius:20px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;text-align:left;padding:0;min-height:0;white-space:normal}
+.mini .art{height:96px;font-size:44px}
+.mini .body{padding:10px 12px 12px;display:grid;gap:2px}
+.mini h3{font-size:17px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.art{display:grid;place-items:center;position:relative;overflow:hidden}
+.art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.badge{position:absolute;left:8px;top:8px;background:#fffdf5ee;border-radius:20px;padding:1px 9px;font-size:12px;font-weight:700;z-index:1}
+.heart{position:absolute;right:8px;top:6px;z-index:1;min-height:36px;width:36px;padding:0;border-radius:50%;background:#fffdf5ee;font-size:17px}
+.pop{font-size:13px;color:#7a4a00}
+.group-head{display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px}
+.group-head h3{font-size:18px}
+.empty{background:var(--paper);border:1px dashed var(--line);border-radius:20px;padding:20px;text-align:center}
+.empty p{margin:0 0 12px}
+/* 즐겨찾기 목록 */
+.list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+main{overflow-x:clip}
+.item{display:flex;align-items:center;gap:12px;background:var(--paper);border:1px solid var(--soft);border-radius:16px;padding:10px 10px 10px 12px}
+.item .ico{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:24px;flex:none}
+.item .txt{flex:1;min-width:0;cursor:pointer}
+.item .txt b{display:block;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .txt span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .acts{display:flex;gap:4px;flex:none}
+.item .acts .link,.item .acts button{min-height:40px;padding:4px 11px}
+.search{margin:10px 0 6px}
+/* 탭바 */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#fffdf5f5;backdrop-filter:blur(8px);border-top:1px solid var(--soft);padding-bottom:env(safe-area-inset-bottom)}
+.tabbar .wrap{display:grid;grid-template-columns:repeat(3,1fr);height:var(--tab)}
+.tabbar a{display:grid;place-items:center;align-content:center;gap:0;text-decoration:none;color:var(--muted);font-size:13px;font-weight:700}
+.tabbar a span{font-size:23px;line-height:1.1}
+.tabbar a[aria-current=page]{color:var(--green)}
+.tabbar a[aria-current=page] span{transform:scale(1.12)}
+.badge-n{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--green);color:#fff;font-size:11px;margin-left:2px}
+/* 시트(다이얼로그) */
+dialog{border:0;padding:0;background:var(--paper);color:inherit;width:min(100vw,640px);max-width:100vw;max-height:92vh;border-radius:24px 24px 0 0;margin:auto auto 0;box-shadow:0 -10px 40px #18342640}
+@media(min-width:700px){dialog{border-radius:24px;margin:auto}}
+dialog::backdrop{background:#18342688}
+.sheet-head{position:sticky;top:0;z-index:2;background:var(--paper);display:flex;justify-content:space-between;align-items:center;gap:8px;padding:16px 18px 10px;border-bottom:1px solid var(--soft)}
+.sheet-head h2{font-size:21px}
+.sheet-body{padding:14px 18px 22px}
+.sheet-foot{position:sticky;bottom:0;background:var(--paper);border-top:1px solid var(--soft);padding:12px 18px calc(12px + env(safe-area-inset-bottom));display:flex;gap:8px}
+.sheet-foot .big{flex:1}
+.box{border:1px solid var(--soft);border-radius:18px;padding:14px;margin-bottom:12px;background:#fffefa}
+.box h3{font-size:17px;margin-bottom:4px}
+details.how{font-size:14px;margin-top:8px}
+details.how summary{cursor:pointer;font-weight:700;color:var(--green)}
+details.how ol{padding-left:20px;margin:6px 0}
+label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
+.prow{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--soft)}
+.prow .txt{flex:1;min-width:0}
+.prow .txt b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prow select{width:auto;min-height:38px;padding:4px 8px;font-size:14px;max-width:44%}
+.tag{font-size:12px;border-radius:10px;padding:1px 8px;background:#eee;color:#555;white-space:nowrap}
+.tag.dup{background:#f1eadb;color:var(--warn)}
+.tag.err{background:#f6dcdc;color:#8a1f1f}
+.report{border-radius:14px;background:#eef3e2;padding:12px 14px;font-size:14px;margin-bottom:12px}
 .report ul{margin:4px 0;padding-left:20px}
-.howto{font-size:14px;color:var(--muted)}
-.howto summary{color:var(--ink)}
-footer{font-size:13px;color:var(--muted)}
-@media(max-width:600px){.hero svg{opacity:.35}.hero p{max-width:260px}.big{width:100%}}
+.detail .art{height:170px;font-size:72px;border-radius:18px}
+.detail h2{font-size:26px;margin:12px 0 2px}
+.detail .popbox{background:#fff2d6;border-radius:14px;padding:10px 12px;margin:12px 0;font-size:14px}
+.detail dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px;margin:10px 0}
+.detail dt{font-weight:700}
+.detail dd{margin:0}
+.settings .box label.row{padding:6px 0}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;left:50%;bottom:calc(var(--tab) + 18px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--green);color:#fff;border-radius:20px;padding:10px 18px;z-index:50;font-size:15px;max-width:90vw;box-shadow:0 6px 20px #18342655}
+[hidden]{display:none!important}
 </style>
 </head>
 <body>
-<header><strong>🌿 주말에 어디가지?</strong><button class="primary" id="open">＋ 즐겨찾기 가져오기</button></header>
-<main>
-  <section class="hero">
-    <svg viewBox="0 0 420 240" aria-hidden="true"><circle cx="290" cy="62" r="37" fill="#ffc46d"/><path d="M0 240 150 70 293 240" fill="#80ac74"/><path d="M95 240 285 103 420 224v16" fill="#4b825e"/><path d="M194 240 251 161 310 240" fill="#f9db90"/><path d="m251 186-31 54h61z" fill="#b5784d"/></svg>
-    <div>
-      <span class="eyebrow">WEEKEND CLUB</span>
+<header class="topbar"><div class="wrap">
+  <strong id="title">🌿 주말에 어디가지?</strong>
+  <span id="topAction"></span>
+</div></header>
+
+<main class="wrap">
+  <!-- 홈 -->
+  <div id="page-home" data-page="home">
+    <section class="hero">
+      <svg viewBox="0 0 420 240" aria-hidden="true"><circle cx="290" cy="62" r="37" fill="#ffc46d"/><path d="M0 240 150 70 293 240" fill="#80ac74"/><path d="M95 240 285 103 420 224v16" fill="#4b825e"/><path d="M194 240 251 161 310 240" fill="#f9db90"/><path d="m251 186-31 54h61z" fill="#b5784d"/></svg>
+      <span class="eyebrow" id="weekendLabel">WEEKEND CLUB</span>
       <h1>이번 주말,<br>아이랑 어디 갈까?</h1>
-      <p>지도에 모아 둔 곳부터 처음 만나는 나들이까지.</p>
       <button id="pick" class="primary big">🎲 한 곳 골라줘</button>
-      <p class="conds" id="conds" aria-live="polite"></p>
+    </section>
+    <div class="filters">
+      <div class="chips" id="homeGroups" role="group" aria-label="분류"></div>
+      <div class="chips" id="homeEnv" role="group" aria-label="실내·야외"></div>
     </div>
-  </section>
 
-  <nav class="tabs" aria-label="장소 목록">
-    <button data-tab="discover" class="active" aria-pressed="true">새로운 장소 <span id="nDiscover"></span></button>
-    <button data-tab="saved" aria-pressed="false">내 즐겨찾기 <span id="nSaved"></span></button>
-  </nav>
+    <section class="block" aria-labelledby="popTitle">
+      <div class="sec-head"><h2 id="popTitle">🔥 요즘 인기 있는 곳</h2><button class="ghost small" id="popInfo">ⓘ 인기 기준</button></div>
+      <p class="status" id="popStatus" role="status"></p>
+      <div class="scroller" id="popList"></div>
+    </section>
 
-  <section class="panel" aria-label="조건">
-    <div class="row">
-      <label class="inline">지역 <select id="region"></select></label>
-      <div class="seg" role="group" aria-label="실내·야외" id="env">
-        <button data-env="" class="active">실내·야외 모두</button><button data-env="실내">☔ 실내</button><button data-env="야외">☀️ 야외</button>
+    <section class="block" aria-labelledby="favTitle">
+      <div class="sec-head"><h2 id="favTitle">⭐ 내 즐겨찾기에서 추천</h2><button class="ghost small" id="reshuffle">🔀 다시 섞기</button></div>
+      <div id="favRecs"></div>
+    </section>
+  </div>
+
+  <!-- 즐겨찾기 -->
+  <div id="page-saved" data-page="saved" hidden>
+    <input id="search" class="search" type="search" placeholder="이름·지역·메모 검색" aria-label="즐겨찾기 검색">
+    <div class="chips" id="favGroups" role="group" aria-label="분류"></div>
+    <div id="favList"></div>
+  </div>
+
+  <!-- 설정 -->
+  <div id="page-settings" data-page="settings" class="settings" hidden>
+    <div class="box" style="margin-top:14px">
+      <h3>📍 기본 지역</h3>
+      <p class="muted">홈 추천과 ‘한 곳 골라줘’에 쓰여요. 지역을 모르는 즐겨찾기는 항상 포함돼요.</p>
+      <select id="setRegion"></select>
+    </div>
+    <div class="box">
+      <h3>🏠 홈에서 추천할 분류</h3>
+      <div id="setGroups"></div>
+    </div>
+    <div class="box">
+      <h3>🔥 인기 장소 데이터</h3>
+      <p class="muted" id="setLive"></p>
+      <div class="row wrapline"><button id="setReload">다시 불러오기</button><button id="setPopInfo" class="ghost">인기 기준 보기</button></div>
+    </div>
+    <div class="box">
+      <h3>💾 내 데이터</h3>
+      <p class="muted" id="setData"></p>
+      <div class="row wrapline">
+        <button id="backupSave">백업 파일 저장</button>
+        <label class="link">백업 불러오기<input id="backupLoad" type="file" accept=".json,application/json" hidden></label>
+        <button id="wipe" class="ghost" style="color:#8a1f1f">모두 지우기</button>
       </div>
     </div>
-    <div class="chips" role="group" aria-label="카테고리" id="chips"></div>
-    <div class="row">
-      <input id="search" class="grow" type="search" placeholder="장소·지역·메모 검색" aria-label="장소 또는 지역 검색">
-      <label class="inline muted"><input type="checkbox" id="includeOther"> 골프·맛집·숙소도 보기</label>
+    <div class="box">
+      <h3>📱 휴대폰에 설치하기</h3>
+      <p class="muted"><b>안드로이드(크롬)</b> 메뉴 ⋮ → ‘홈 화면에 추가’ → 설치하면 앱처럼 열리고, 네이버·구글지도의 <b>공유</b> 메뉴에 ‘주말나들이’가 나타나 바로 보낼 수 있어요.<br><b>아이폰(사파리)</b> 공유 버튼 → ‘홈 화면에 추가’. 지도 앱에서는 공유 → 링크 복사 후 즐겨찾기 → 가져오기에 붙여 넣어 주세요.</p>
     </div>
-  </section>
-
-  <div class="row" style="margin-top:18px"><h2 id="heading">아이와 가볼 만한 곳</h2><span class="muted" id="count" aria-live="polite"></span></div>
-  <p id="source" class="status" role="status" style="margin:10px 0 0"></p>
-  <div id="grid"></div>
-  <div class="selbar" id="selbar"><span id="selCount"></span><span class="actions"><button id="selClear" style="background:transparent;color:#fff;border-color:#ffffff88">선택 취소</button><button id="selSave">♡ 한 번에 저장</button></span></div>
+    <p class="muted" style="text-align:center">관광 정보 출처: 한국관광공사 · 즐겨찾기는 이 기기 브라우저에만 저장돼요.<br>주말에 어디가지? v2.1</p>
+  </div>
 </main>
-<footer>방문 전 운영시간·휴관일·예약 여부를 지도나 공식 홈페이지에서 꼭 확인해 주세요. 즐겨찾기는 이 브라우저에만 저장돼요.</footer>
 
-<dialog id="dialog" aria-labelledby="dlgTitle">
-  <div class="row"><h2 id="dlgTitle">즐겨찾기 가져오기</h2><button type="button" id="close" aria-label="닫기">✕</button></div>
-  <div id="importReport" class="report" role="status" hidden></div>
+<nav class="tabbar" aria-label="화면 이동"><div class="wrap">
+  <a href="#home" data-tab="home"><span>🏠</span>홈</a>
+  <a href="#saved" data-tab="saved"><span>⭐</span>즐겨찾기 <em class="badge-n" id="tabCount" hidden></em></a>
+  <a href="#settings" data-tab="settings"><span>⚙️</span>설정</a>
+</div></nav>
 
-  <h3>① 장소 하나 추가</h3>
-  <p class="muted">네이버지도·구글지도 앱에서 장소 → <b>공유</b> → <b>링크 복사</b> 후 붙여 넣으세요.</p>
-  <form id="form">
-    <label>장소 이름<input id="name" required maxlength="150" placeholder="예: 우리 가족 캠핑장"></label>
-    <label>지도 공유 링크<input id="url" type="url" inputmode="url" placeholder="https://naver.me/… 또는 https://maps.app.goo.gl/…"></label>
-    <label>카테고리<select id="category"></select></label>
-    <button class="primary big">장소 추가</button>
-  </form>
-  <hr>
-  <h3>② 공유 문구 여러 개 붙여넣기</h3>
-  <p class="muted">공유 버튼으로 복사한 문구(이름·주소·링크)를 여러 곳 이어서 붙여도 장소별로 나눠 저장해요.</p>
-  <textarea id="paste" placeholder="[네이버 지도]&#10;국립과천과학관&#10;경기 과천시 상하벌로 110&#10;https://naver.me/…"></textarea>
-  <button id="pasteAdd" class="big" style="margin-top:8px">붙여 넣은 장소 추가</button>
-  <hr>
-  <h3>③ 구글 Takeout 파일</h3>
-  <label class="field">저장됨 CSV(여러 개 가능) 또는 Saved Places.json
-    <input id="csv" type="file" accept=".csv,text/csv,.json,application/json,application/geo+json" multiple>
-  </label>
-  <details class="howto"><summary>구글 지도 저장 목록 내려받는 방법</summary>
-    <ol>
-      <li>takeout.google.com 에서 <b>모두 선택 해제</b></li>
-      <li><b>저장됨</b>(목록별 CSV)과 <b>지도(내 장소)</b>(별표 장소 JSON)를 선택</li>
-      <li>내보내기 → 받은 zip을 풀고 CSV/JSON 파일을 여기서 선택</li>
-    </ol>
-  </details>
-  <details class="howto"><summary>네이버지도 즐겨찾기는요?</summary>
-    <p>네이버지도는 즐겨찾기(MY플레이스) 목록을 내보내는 기능이나 개발자용 공식 API를 제공하지 않아 계정 자동 연동은 할 수 없어요. 각 장소의 공유 링크나 공유 문구를 ①·②로 추가해 주세요.</p>
-  </details>
+<!-- 가져오기 -->
+<dialog id="importDlg" aria-labelledby="importTitle">
+  <div class="sheet-head"><h2 id="importTitle">지도 즐겨찾기 가져오기</h2><button data-close aria-label="닫기">✕</button></div>
+  <div class="sheet-body" id="importStart">
+    <div id="importReport" class="report" role="status" hidden></div>
+    <div class="box">
+      <h3>🔗 링크·공유 문구 붙여넣기</h3>
+      <p class="muted">네이버지도·구글지도 <b>리스트 공유 링크</b>를 붙이면 리스트 전체를, 장소 공유 문구를 붙이면 그 장소들을 불러와요. 여러 개를 이어 붙여도 돼요.</p>
+      <textarea id="paste" placeholder="예) https://naver.me/xxxx  (네이버 리스트)&#10;예) https://maps.app.goo.gl/xxxx  (구글 리스트)&#10;예) [네이버 지도] 국립과천과학관 … https://naver.me/…"></textarea>
+      <button id="pasteGo" class="primary big" style="width:100%;margin-top:8px">불러오기</button>
+      <details class="how"><summary>네이버지도 리스트 링크 받는 법</summary><ol>
+        <li>네이버지도 앱 → 아래 <b>저장</b> 탭</li>
+        <li>가져올 리스트의 <b>⋮</b> → <b>리스트 정보 수정</b>에서 공개 설정을 <b>공개</b>로</li>
+        <li>다시 <b>⋮</b> → <b>공유</b> → <b>링크 복사</b> 후 여기에 붙여넣기</li>
+      </ol><p class="muted">가져온 뒤에는 다시 비공개로 바꿔도 돼요.</p></details>
+      <details class="how"><summary>구글지도 리스트 링크 받는 법</summary><ol>
+        <li>구글지도 앱 → <b>저장됨</b> → 리스트 선택</li>
+        <li><b>공유</b>(또는 ⋮ → 리스트 공유) → <b>링크 공유</b> 켜기 → 링크 복사</li>
+        <li>여기에 붙여넣기 (가져온 뒤 링크 공유를 꺼도 돼요)</li>
+      </ol></details>
+    </div>
+    <div class="box">
+      <h3>📲 지도 앱에서 바로 보내기</h3>
+      <p class="muted">휴대폰 보안 때문에 어떤 앱도 다른 앱(네이버·구글지도)의 즐겨찾기를 직접 읽을 수는 없어요. 대신 이 앱을 홈 화면에 설치(안드로이드)하면 지도 앱의 <b>공유</b> 메뉴에서 ‘주말나들이’를 골라 장소나 리스트를 바로 보낼 수 있어요.</p>
+    </div>
+    <div class="box">
+      <h3>📄 파일로 가져오기</h3>
+      <p class="muted">구글 Takeout의 ‘저장됨’ CSV·Saved Places.json, 또는 이 앱의 백업 파일</p>
+      <input id="fileIn" type="file" accept=".csv,text/csv,.json,application/json,application/geo+json" multiple>
+      <details class="how"><summary>구글 Takeout 받는 법</summary><ol>
+        <li>takeout.google.com → <b>모두 선택 해제</b></li>
+        <li><b>저장됨</b>, <b>지도(내 장소)</b> 선택 → 내보내기</li>
+        <li>받은 zip을 풀고 CSV/JSON 파일 선택</li>
+      </ol></details>
+    </div>
+  </div>
+  <div id="importPreview" hidden>
+    <div class="sheet-body"><p id="pvSummary" class="report"></p><div id="pvList"></div></div>
+    <div class="sheet-foot"><button id="pvBack">← 다시</button><button id="pvSave" class="primary big">저장</button></div>
+  </div>
 </dialog>
 
+<!-- 장소 상세 -->
+<dialog id="detailDlg" aria-labelledby="detailName">
+  <div class="sheet-head"><span class="muted" id="detailKind"></span><button data-close aria-label="닫기">✕</button></div>
+  <div class="sheet-body detail" id="detailBody"></div>
+</dialog>
+
+<!-- 편집 -->
 <dialog id="editDlg" aria-labelledby="editTitle">
-  <div class="row"><h2 id="editTitle">장소 정리</h2><button type="button" data-close aria-label="닫기">✕</button></div>
-  <form id="editForm">
-    <label>장소 이름<input id="eName" required maxlength="150"></label>
-    <label>카테고리<select id="eCategory"></select></label>
-    <label>실내·야외<select id="eEnv"><option value="">모름</option><option>실내</option><option>야외</option></select></label>
-    <label>지역 (예: 경기 과천)<input id="eRegion" maxlength="40"></label>
-    <label>지도 링크<input id="eUrl" type="url"></label>
-    <label>메모<textarea id="eNote" maxlength="500"></textarea></label>
-    <div class="actions"><button class="primary big">저장</button><button type="button" id="eDelete">🗑 삭제</button></div>
+  <div class="sheet-head"><h2 id="editTitle">장소 정리</h2><button data-close aria-label="닫기">✕</button></div>
+  <form id="editForm" class="sheet-body">
+    <label class="field">장소 이름<input id="eName" required maxlength="150"></label>
+    <label class="field">분류<select id="eCategory"></select></label>
+    <label class="field">실내·야외<select id="eEnv"><option value="">모름</option><option>실내</option><option>야외</option></select></label>
+    <label class="field">지역 (예: 경기 과천)<input id="eRegion" maxlength="40"></label>
+    <label class="field">지도 링크<input id="eUrl" type="url"></label>
+    <label class="field">메모<textarea id="eNote" maxlength="500" style="min-height:80px"></textarea></label>
+    <div class="row"><button class="primary big" style="flex:1">저장</button><button type="button" id="eDelete">🗑 삭제</button></div>
   </form>
 </dialog>
 
-<dialog id="choice" aria-labelledby="choiceTitle">
-  <div class="row"><h2 id="choiceTitle">오늘의 나들이 후보</h2><button id="closeChoice" aria-label="닫기">✕</button></div>
-  <p class="muted" id="choiceConds"></p>
-  <div id="picked"></div>
-  <div class="actions" style="margin-top:12px"><button id="reroll" class="big">🎲 다른 곳</button></div>
+<!-- 한 곳 골라줘 -->
+<dialog id="pickDlg" aria-labelledby="pickTitle">
+  <div class="sheet-head"><h2 id="pickTitle">🎲 오늘의 나들이</h2><button data-close aria-label="닫기">✕</button></div>
+  <div class="sheet-body">
+    <div class="chips" id="pickFrom" role="group" aria-label="후보 범위"></div>
+    <p class="muted" id="pickConds"></p>
+    <div id="pickBody" class="detail"></div>
+  </div>
+  <div class="sheet-foot"><button id="reroll" class="big">🎲 다른 곳</button></div>
 </dialog>
+
+<!-- 인기 기준 -->
+<dialog id="popDlg" aria-labelledby="popDlgTitle">
+  <div class="sheet-head"><h2 id="popDlgTitle">‘인기 있는 곳’은 이렇게 골라요</h2><button data-close aria-label="닫기">✕</button></div>
+  <div class="sheet-body">
+    <ol>
+      <li><b>이번 주말 열리는 축제·행사</b> — 한국관광공사 행사정보에서 이번 토·일에 진행 중인 행사. 가장 최신 정보라 맨 앞에 보여요.</li>
+      <li><b>실제로 많이 찾아간 곳</b> — 한국관광공사 ‘관광지별 연관 관광지’(티맵 내비게이션 이동 데이터). 시군구마다 사람들이 함께 많이 찾아간 관광지 순위에 <b>여러 지역에서, 높은 순위로</b> 나온 곳일수록 점수가 높아요. 카드에 순위와 <b>기준월</b>을 함께 보여줘요.</li>
+      <li><b>아이와 가기 좋은 곳만</b> — 박물관·과학관·체험·공원·캠핑장·여행 명소만 남기고 쇼핑·술집·숙박 등은 빼요.</li>
+      <li>이미 즐겨찾기에 저장한 곳은 빼고 보여줘요.</li>
+    </ol>
+    <p class="muted">검색량·SNS 언급 같은 ‘화제성’은 공식 공개 데이터가 없어 쓰지 않았어요. 연관 관광지 데이터는 월 단위로 공개되며 최신 달이 늦게 올라올 수 있어요. 데이터에 연결할 수 없을 때는 <b>기본 추천</b>(서울·경기 8곳)을 보여줘요.</p>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden></div>
 
 <script src="config.js"></script>
 <script src="core.js"></script>
