@@ -42,6 +42,7 @@
     ['박물관', /박물관|미술관|기념관|역사관|전시관|뮤지엄|아트파크|아트센터|museum|gallery|갤러리/i],
     ['숙소·펜션', /펜션|호텔|리조트|모텔|민박|게스트하우스|풀빌라|스테이|숙박|hotel|resort|pension|hostel/i],
     ['축제·행사', /축제|페스티벌|박람회|festival/i],
+    ['관광·쇼핑', /몰$|아울렛|백화점|면세점|쇼핑센터/], // '롯데월드몰'처럼 놀이 단어가 섞인 쇼핑몰을 먼저 걸러요
     ['자연·공원', /공원|수목원|식물원|동물원|휴양림|숲|생태|습지|계곡|농장|목장|park|zoo|arboretum|forest/i],
     ['체험·놀이', /키즈|어린이|체험|놀이|상상나라|아쿠아|수족관|워터파크|마법학교|치즈학교|테마파크|랜드|월드|트램폴린|방방|kids|aquarium|playground/i],
     ['맛집·카페', /음식점|식당|맛집|카페|커피|디저트|베이커리|빵|국밥|냉면|갈비|고기|치킨|피자|분식|횟집|레스토랑|면옥|막국수|떡볶이|브런치|한식|중식|일식|양식|restaurant|cafe|coffee|bakery|bistro/i],
@@ -370,6 +371,25 @@
     return pool;
   }
 
+  // 직선거리(km). 위치가 없으면 null
+  function distanceKm(a, b) {
+    if (!a || !b || a.lat == null || b.lat == null || a.lng == null || b.lng == null) return null;
+    const R = 6371, rad = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function formatKm(km) {
+    if (km == null) return '';
+    if (km < 1) return `${Math.max(100, Math.round(km * 10) * 100)}m`;
+    return km < 10 ? `${km.toFixed(1)}km` : `${Math.round(km)}km`;
+  }
+  // 가까운 순 (위치 없는 곳은 뒤로)
+  function byDistance(list, here) {
+    return [...list].map((p) => [p, distanceKm(here, p)])
+      .sort((x, y) => (x[1] == null) - (y[1] == null) || x[1] - y[1]).map((x) => x[0]);
+  }
+
   function shuffle(list, rnd) {
     const r = rnd || Math.random, a = [...list];
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -399,7 +419,7 @@
     STORAGE_KEY, LEGACY_KEY, SETTINGS_KEY, LIVE_CACHE_KEY, TYPES, GROUPS, OUTING, REGIONS, SEED,
     label, groupOf, groupInfo, infer, regionFromAddress, inRegion, validUrl, canonicalUrl, mapSource, normName, isDup,
     makePlace, loadPlaces, savePlaces, mergeImport, previewImport, exportBackup, parseBackup,
-    parseCsv, fromCsv, fromGeoJson, fromShareText, filterPlaces, discoverPool, pickOne, shuffle, regionToken,
+    parseCsv, fromCsv, fromGeoJson, fromShareText, filterPlaces, discoverPool, pickOne, shuffle, regionToken, distanceKm, formatKm, byDistance,
   };
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.WeekendCore = api;

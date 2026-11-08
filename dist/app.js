@@ -13,7 +13,7 @@
   let saved = loaded.places;
   if (loaded.migrated) persist(saved, true);
 
-  const defaults = { region: 'sg', homeGroup: '', env: '', favGroup: 'kids', favCat: '', favRegion: '', pickFrom: 'all', homeGroups: ['kids', 'camp', 'food'] };
+  const defaults = { region: 'sg', homeGroup: '', env: '', favGroup: 'kids', favCat: '', favRegion: '', favSort: 'name', pickFrom: 'all', homeGroups: ['kids', 'camp', 'food'] };
   let ui = { ...defaults };
   try {
     const s = JSON.parse(localStorage.getItem(C.SETTINGS_KEY) || '{}');
@@ -58,7 +58,39 @@
     return `<div class="art" style="background:${t.bg}">${t.icon}${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" onerror="this.remove()">` : ''}` +
       (badge ? `<span class="badge">${esc(badge)}</span>` : '') + extra + '</div>';
   }
-  const metaLine = (p, unknown = '') => [C.label(p.category), p.env, p.region || unknown].filter(Boolean).map(esc).join(' · ');
+  // 거리는 장소별로 한 번만 계산해 두고, 위치가 1km 넘게 바뀔 때만 다시 계산해요.
+  let distMemo = new Map();
+  function distKm(p) {
+    if (!here || p.lat == null) return null;
+    const k = p.id + ':' + p.lat;
+    if (!distMemo.has(k)) distMemo.set(k, C.distanceKm(here, p));
+    return distMemo.get(k);
+  }
+  const distText = (p) => C.formatKm(distKm(p));
+  const metaLine = (p, unknown = '') => [distText(p), C.label(p.category), p.env, p.region || unknown].filter(Boolean).map(esc).join(' · ');
+
+  // ---------- 내 위치 (자동으로 거리 표시) ----------
+  // 앱을 열 때 한 번 위치를 받아 이 기기에 기억해요(다음에 열면 기억한 위치로 바로 표시 후 조용히 갱신).
+  // 브라우저 위치 기능은 https 주소(또는 PC의 localhost)에서만 동작해요.
+  const HERE_KEY = 'weekend-here-v1';
+  let here = null;
+  let hereStatus = 'unknown';
+  try { here = JSON.parse(localStorage.getItem(HERE_KEY) || 'null'); } catch { /* 없음 */ }
+  function locate(then) {
+    if (!navigator.geolocation || !window.isSecureContext) { hereStatus = 'insecure'; return; }
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const next = { lat: pos.coords.latitude, lng: pos.coords.longitude, at: Date.now() };
+      const moved = !here || C.distanceKm(here, next) > 1;
+      hereStatus = 'ok';
+      try { localStorage.setItem(HERE_KEY, JSON.stringify(next)); } catch { /* 선택 */ }
+      if (moved) { here = next; distMemo = new Map(); render(); }
+      if (then) then();
+    }, (err) => {
+      hereStatus = err.code === 1 ? 'denied' : 'failed';
+      if (then) toast(err.code === 1 ? '위치 권한이 꺼져 있어요. 브라우저 설정에서 이 사이트의 위치를 허용해 주세요.' : '위치를 확인하지 못했어요.');
+      if (route() === 'settings') render();
+    }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60 * 1000 });
+  }
   const isSaved = (p) => saved.some((s) => s.id === p.id || C.isDup(s, p));
 
   function mini(p) {
@@ -77,7 +109,8 @@
     const own = saved.find((s) => s.id === p.id);
     const actions = own ? `<button data-edit="${esc(own.id)}">✏️ 분류·편집</button>`
       : savedHere ? '<span class="tag">즐겨찾기에 있음</span>' : `<button data-save="${esc(p.id)}">♡ 즐겨찾기 저장</button>`;
-    return `${art(p)}<div class="muted" style="margin-top:12px">${metaLine(p, '지역 미확인')}</div>` +
+    const km = C.distanceKm(here, p);
+    return `${art(p)}<div class="muted" style="margin-top:12px">${metaLine(p, '지역 미확인')}${km != null ? ' <span class="muted">(현재 위치에서 직선거리)</span>' : ''}</div>` +
       `<h2>${esc(p.name)}</h2>${note ? `<p>${esc(note)}</p>` : ''}${pop}${hours}` +
       `<p class="muted">방문 전 운영시간·휴무·예약을 지도나 공식 홈페이지에서 꼭 확인해 주세요.</p>` +
       `<div class="row wrapline">${mapButtons(p)}${actions}</div>`;
@@ -210,12 +243,15 @@
       regs.map((r) => `<button data-freg="${esc(r)}" class="${ui.favRegion === r ? 'active' : ''}">${esc(r)} ${regCounts[r]}</button>`).join('');
     const located = rows.filter((p) => p.lat != null).length;
     $('favMap').hidden = false;
-    $('favMap').innerHTML = `<span class="muted">${rows.length}곳</span><button class="primary small" data-show-map ${rows.length ? '' : 'disabled'}>🗺 지도에서 보기${located < rows.length ? ` (${located}/${rows.length})` : ''}</button>`;
-    const byName = (a, b) => a.name.localeCompare(b.name, 'ko');
-    const html = ui.favCat || cats.length < 2
-      ? `<div class="list">${[...rows].sort(byName).map(itemRow).join('')}</div>`
+    const near = ui.favSort === 'near' && here;
+    $('favMap').innerHTML = `<span class="row"><span class="muted">${rows.length}곳</span>` +
+      `<button class="small ${near ? 'active' : ''}" data-fsort="${near ? 'name' : 'near'}">${near ? '📍 가까운 순' : '가나다순'}</button></span>` +
+      `<button class="primary small" data-show-map ${rows.length ? '' : 'disabled'}>🗺 지도에서 보기${located < rows.length ? ` (${located}/${rows.length})` : ''}</button>`;
+    const sortRows = (list) => (near ? C.byDistance(list, here) : [...list].sort((a, b) => a.name.localeCompare(b.name, 'ko')));
+    const html = ui.favCat || cats.length < 2 || near
+      ? `<div class="list">${sortRows(rows).map(itemRow).join('')}</div>`
       : cats.map((k) => {
-        const list = rows.filter((p) => p.category === k).sort(byName);
+        const list = sortRows(rows.filter((p) => p.category === k));
         return list.length ? `<div class="group-head"><h3>${C.TYPES[k].icon} ${esc(C.label(k))} <span class="muted">${list.length}</span></h3></div><div class="list">${list.map(itemRow).join('')}</div>` : '';
       }).join('');
     $('favList').innerHTML = rows.length ? html : '<div class="empty" style="margin-top:14px"><p>조건에 맞는 곳이 없어요.</p></div>';
@@ -255,7 +291,9 @@
       const t = T(p); const m = mapHref(p);
       return L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'pin', html: `<span style="background:${t.bg}">${t.icon}</span>`, iconSize: [34, 34], iconAnchor: [17, 17] }) })
         .bindPopup(`<b>${esc(p.name)}</b><br><span class="muted">${metaLine(p)}</span><br><a target="_blank" rel="noopener noreferrer" href="${esc(m.href)}">${esc(m.label)}에서 열기</a> · <a href="#" data-detail="${esc(p.id)}">자세히</a>`);
-    })).addTo(map);
+    }));
+    if (here) layer.addLayer(L.circleMarker([here.lat, here.lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#2f6fe0', fillOpacity: 1 }).bindPopup('현재 위치'));
+    layer.addTo(map);
     setTimeout(() => {
       map.invalidateSize();
       if (pts.length) map.fitBounds(layer.getBounds(), { padding: [30, 30], maxZoom: 14 }); else map.setView([37.55, 126.98], 10);
@@ -273,6 +311,9 @@
       `<span class="muted">${l.count}곳 · ${new Date(l.updatedAt).toLocaleDateString('ko-KR')} 업데이트</span></div>` +
       `<button class="small" data-list-update="${esc(l.url)}">업데이트</button><button class="small ghost" data-list-forget="${esc(l.url)}" aria-label="${esc(l.name)} 잊기">✕</button></div>`).join('')
       : '<p class="muted">리스트 링크로 가져오면 여기에 기억해 두고, 다음부터는 [업데이트] 한 번으로 새로 추가한 곳만 가져와요.</p>';
+    $('setHere').textContent = hereStatus === 'insecure' ? '거리 표시: 이 주소(http)에서는 위치를 쓸 수 없어요. https 주소로 배포하면 자동으로 보여요.'
+      : hereStatus === 'denied' ? '거리 표시: 위치 권한이 꺼져 있어요. 브라우저 설정에서 이 사이트의 위치를 허용해 주세요.'
+      : here ? `거리 표시: 현재 위치 기준 직선거리 (${new Date(here.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })} 위치)` : '거리 표시: 위치를 확인하는 중이에요.';
     $('setData').textContent = `즐겨찾기 ${saved.length}곳이 이 기기 브라우저에 저장돼 있어요. 휴대폰을 바꾸거나 다른 기기에서 쓰려면 백업 파일을 저장해 옮겨 주세요.`;
   }
 
@@ -530,6 +571,11 @@
     if ((el = q('[data-hgroup]'))) { ui.homeGroup = el.dataset.hgroup; saveUi(); render(); return; }
     if ((el = q('[data-env]'))) { ui.env = el.dataset.env; saveUi(); render(); return; }
     if ((el = q('[data-fgroup]'))) { ui.favGroup = el.dataset.fgroup; ui.favCat = ''; ui.favRegion = ''; saveUi(); render(); return; }
+    if ((el = q('[data-fsort]'))) {
+      const v = el.dataset.fsort;
+      if (v === 'near' && !here) { locate(() => { ui.favSort = 'near'; saveUi(); }); return; }
+      ui.favSort = v; saveUi(); render(); return;
+    }
     if ((el = q('[data-fcat]'))) { ui.favCat = el.dataset.fcat; ui.favRegion = ''; saveUi(); render(); return; }
     if ((el = q('[data-freg]'))) { ui.favRegion = el.dataset.freg; saveUi(); render(); return; }
     if (q('[data-show-map]')) {
@@ -586,8 +632,10 @@
       status: 'ok', stale,
       meta: { fetchedAt: data.fetchedAt, popularityNote: data.popularityNote },
       places: (data.places || []).filter((p) => p && p.name).map((p, i) => {
-        const category = C.TYPES[p.category] ? p.category : C.infer(p.name);
-        return { ...p, id: 'live-' + (p.id || i), origin: 'live', category, env: p.env || C.TYPES[category].env };
+        // 앱의 분류 규칙을 먼저 적용해요(시장·몰 등은 '기타'가 되어 나들이 추천에서 빠져요).
+        const mine = C.infer(p.name);
+        const category = mine !== '기타' ? mine : C.TYPES[p.category] ? p.category : mine;
+        return { ...p, id: 'live-' + (p.id || i), origin: 'live', category, env: C.TYPES[category].env || p.env || '' };
       }),
     };
   }
@@ -598,14 +646,14 @@
     if (API === '' || CONFIG.disableLive) { live = { status: 'off', places: [], meta: null }; render(); return; }
     live = { status: 'loading', places: [], meta: null }; render();
     try {
-      const res = await fetch(`${API}/discover?region=${encodeURIComponent(region)}`, { signal: AbortSignal.timeout(45000) });
+      const res = await fetch(`${API}/discover?region=${encodeURIComponent(region)}${force === true ? '&refresh=1' : ''}`, { signal: AbortSignal.timeout(45000) });
       const data = await res.json().catch(() => null);
       if (res.status === 202 && data && data.pending) {
         // 서버가 처음 데이터를 만드는 중(공공데이터 응답이 느려 몇 분 걸려요) → 1분 뒤 다시 확인
         if (region !== ui.region) return;
         if (cache && cache.region === region) useLive(cache.data, true);
         else live = { status: 'pending', places: [], meta: null };
-        clearTimeout(loadLive.retry); loadLive.retry = setTimeout(() => loadLive(true), 60000);
+        clearTimeout(loadLive.retry); loadLive.retry = setTimeout(() => loadLive('retry'), 60000);
         render(); return;
       }
       if (!res.ok || !data || data.error) throw new Error((data && data.error) || `HTTP ${res.status}`);
@@ -635,4 +683,5 @@
 
   render();
   loadLive();
+  locate();
 })();

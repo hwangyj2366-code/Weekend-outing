@@ -31,7 +31,7 @@ const PROV = {
 };
 
 // 아이와 가기 어려운 곳은 인기 목록에서 뺍니다. (분류 자체는 앱의 core.js가 다시 합니다)
-const NOT_FOR_KIDS = /골프|컨트리클럽|카지노|면세|백화점|아울렛|쇼핑|터미널|공항|역$|모텔|술|와인|맥주|막걸리|양조|주류|나이트|클럽$/;
+const NOT_FOR_KIDS = /골프|컨트리클럽|카지노|면세|백화점|아울렛|쇼핑|몰$|몰 |시장|거리$|터미널|공항|역$|모텔|술|와인|맥주|막걸리|양조|주류|나이트|클럽$/;
 const ENV = { '캠핑장': '야외', '과학관': '실내', '박물관': '실내', '자연·공원': '야외', '체험·놀이': '실내', '여행지': '야외', '축제·행사': '야외' };
 const RULES = [
   ['캠핑장', /캠핑|야영|글램핑|오토캠/],
@@ -39,7 +39,7 @@ const RULES = [
   ['박물관', /박물관|미술관|기념관|역사관|전시관|뮤지엄/],
   ['자연·공원', /공원|수목원|식물원|동물원|휴양림|숲|생태|습지|농장|목장/],
   ['체험·놀이', /키즈|어린이|체험|놀이|상상나라|아쿠아리움|테마파크|랜드|월드|썰매|레일바이크/],
-  ['여행지', /궁$|궁궐|성곽|한옥마을|전망대|타워|해변|해수욕장|섬$|폭포|케이블카|스카이워크|둘레길|호수|마을|거리$|시장$/],
+  ['여행지', /궁$|궁궐|성곽|한옥마을|전망대|타워|해변|해수욕장|섬$|폭포|케이블카|스카이워크|둘레길|호수|마을|정원/],
 ];
 const classify = (name) => (RULES.find(([, re]) => re.test(name)) || [])[0] || null;
 
@@ -165,7 +165,7 @@ async function popular(key, provs) {
       popularity: { kind: 'tmap', label: `연관 관광지 순위 ${x.hits}회 등장 · 최고 ${x.best}위`, source: '한국관광공사 관광지별 연관 관광지(티맵)', basis, score: x.score },
       _prov: x.prov,
     }));
-  await pool(places.slice(0, 24), 6, (pl) => enrich(key, pl, pl._prov));
+  await pool(places, 6, (pl) => enrich(key, pl, pl._prov)); // 거리·지도 표시용 위치와 운영 정보
   places.forEach((pl) => delete pl._prov);
   return { places, basis };
 }
@@ -211,11 +211,11 @@ async function listed(key, provs) {
 }
 
 const memo = new Map();
-export async function discover(key, region = 'sg') {
+export async function discover(key, region = 'sg', force = false) {
   if (!key) { const e = new Error('TOUR_API_KEY가 설정되지 않았어요.'); e.status = 503; throw e; }
   const provs = REGION[region] ?? REGION.sg;
   const hit = memo.get(region);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.body;
+  if (!force && hit && Date.now() - hit.at < CACHE_MS) return hit.body;
   const withRank = provs.filter((p) => SIGNGU[p]);
   const rest = provs.filter((p) => !SIGNGU[p]);
   const settle = (pr) => pr.then((v) => ({ ok: true, v }), (e) => ({ ok: false, e }));

@@ -28,8 +28,22 @@ function refresh(region) {
   if (running.has(region)) return;
   const started = Date.now();
   console.log(`[discover] ${region} 데이터 만들기 시작`);
-  running.set(region, discover(KEY, region)
+  running.set(region, discover(KEY, region, true)
     .then(async (body) => {
+      // 공공데이터 서버가 불안정하면 이번 결과가 적게 나올 수 있어요. 이전 결과와 합쳐(이번 것 우선) 목록이 줄지 않게 하고,
+      // 같은 장소는 비어 있는 위치·운영 정보를 이전 결과로 채워요. 7일 넘은 이전 결과는 버려요.
+      const prev = await readCache(region);
+      if (prev && Date.now() - new Date(prev.fetchedAt).getTime() < 7 * 24 * 3600 * 1000) {
+        const key = (p) => String(p.name).replace(/s/g, '');
+        const old = new Map(prev.places.map((p) => [key(p), p]));
+        body.places = body.places.map((p) => {
+          const o = old.get(key(p));
+          return o ? { ...o, ...p, lat: p.lat ?? o.lat, lng: p.lng ?? o.lng, image: p.image || o.image, hours: p.hours || o.hours } : p;
+        });
+        const have = new Set(body.places.map(key));
+        body.places.push(...prev.places.filter((p) => !have.has(key(p))));
+        if (!body.popularityNote && prev.popularityNote) body.popularityNote = prev.popularityNote;
+      }
       await fs.mkdir(CACHE_DIR, { recursive: true });
       await fs.writeFile(path.join(CACHE_DIR, `discover-${region}.json`), JSON.stringify(body));
       console.log(`[discover] ${region} 완료: ${body.places.length}곳, ${Math.round((Date.now() - started) / 1000)}초, 실패 호출 ${body.errors.length}건`);
@@ -48,7 +62,7 @@ http.createServer(async (req, res) => {
     const region = /^[a-z]+$/.test(url.searchParams.get('region') || '') ? url.searchParams.get('region') : 'sg';
     const cached = await readCache(region);
     const fresh = cached && Date.now() - new Date(cached.fetchedAt).getTime() < FRESH_MS;
-    if (!fresh) refresh(region);
+    if (!fresh || url.searchParams.get('refresh')) refresh(region); // 설정의 '다시 불러오기'는 기존 데이터를 보여주면서 새로 만들어요
     if (cached) return sendJson(res, 200, { ...cached, refreshing: !fresh });
     return sendJson(res, 202, { pending: true, message: '인기 장소 데이터를 처음 만드는 중이에요. 몇 분 걸려요.' });
   }

@@ -147,4 +147,17 @@ assert.equal(filled.next[0].lat, 37.88);
 assert.equal(filled.next[1].lat, null, '한국 밖 좌표는 버림');
 ok('분류 개편(여행지→아이랑, 시장·거리→기타, 직접 분류 유지), 다시 가져오면 중복 없이 지도 위치만 채움');
 
+// 13. 현재 위치 기준 거리·가까운 순
+const cityHall = { lat: 37.5665, lng: 126.978 };
+const gwacheon = { name: '국립과천과학관', lat: 37.4363, lng: 127.0057 };
+const lego = { name: '레고랜드 코리아', lat: 37.8847, lng: 127.6993 };
+assert.equal(C.formatKm(C.distanceKm(cityHall, gwacheon)), '15km');
+assert.equal(C.formatKm(C.distanceKm(cityHall, lego)), '73km');
+assert.equal(C.formatKm(0.34), '300m');
+assert.equal(C.distanceKm(cityHall, { name: '위치 없음' }), null);
+assert.deepEqual(C.byDistance([lego, { name: '위치 없음' }, gwacheon], cityHall).map((p) => p.name), ['국립과천과학관', '레고랜드 코리아', '위치 없음']);
+assert.equal(C.infer('롯데월드몰'), '관광·쇼핑');
+assert.equal(C.infer('롯데월드 어드벤처'), '체험·놀이');
+ok('현재 위치 기준 직선거리, 가까운 순(위치 없는 곳은 뒤로), 쇼핑몰은 나들이에서 제외');
+
 console.log(`\n모든 확인 통과 (${n}개)`);
