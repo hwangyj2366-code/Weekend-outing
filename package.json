@@ -6,6 +6,10 @@
   "scripts": {
     "start": "node scripts/serve.mjs 8090",
     "selftest": "node scripts/selftest.mjs",
-    "deploy:function": "npx supabase functions deploy discover --no-verify-jwt"
+    "deploy:function": "npx supabase functions deploy discover --no-verify-jwt",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "devDependencies": {
+    "pngjs": "^7.0.0"
   }
 }

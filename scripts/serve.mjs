@@ -15,7 +15,7 @@ const root = path.resolve(here, '..', 'dist');
 const port = Number(process.argv[2] || process.env.PORT || 8090);
 let KEY = process.env.TOUR_API_KEY || '';
 try { KEY ||= (/^\s*TOUR_API_KEY\s*=\s*(\S+)/m.exec(readFileSync(path.resolve(here, '..', '.env.local'), 'utf8')) || [])[1] || ''; } catch { /* 키 없음 → 기본 추천만 */ }
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.json': 'application/json' };
 
 // 공공데이터포털 응답이 느려(호출당 최대 30초) 인기 장소는 백그라운드에서 만들어 파일로 저장해 둬요.
 const CACHE_DIR = path.resolve(here, '..', '.cache');
