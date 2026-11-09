@@ -11,7 +11,7 @@
     : {
       apiBase: '',
       dataBase: 'data',
-      // Supabase에 import-list 함수를 배포한 뒤 프로젝트 주소로 바꿔요 (공개 주소라 넣어도 안전)
-      importListUrl: 'https://YOUR-PROJECT-REF.supabase.co/functions/v1/import-list',
+      // Supabase import-list 함수 (공개 주소라 넣어도 안전)
+      importListUrl: 'https://futemwtqmnmaobogpcfz.supabase.co/functions/v1/import-list',
     };
 })();

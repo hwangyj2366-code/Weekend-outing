@@ -69,7 +69,7 @@ npm start
    (`SUPABASE_ACCESS_TOKEN` 환경 변수 또는 `npx supabase login` 필요)
 5. `dist/config.js`의 `importListUrl`을 `https://<project-ref>.supabase.co/functions/v1/import-list`로 바꾸고 push (공개 주소라 넣어도 안전, 키는 넣지 마세요)
 
-배포 주소: `https://<GitHub 아이디>.github.io/weekend-outing/`
+배포 주소: `https://hwangyj2366-code.github.io/Weekend-outing/` (저장소 이름이 대문자 W)
 배포 전 확인: `node scripts/build-site.mjs site` → `node scripts/serve.mjs 8091 --root site` → `http://localhost:8091/?site` (`?site`를 붙이면 PC에서도 배포 사이트처럼 동작)
 
 > 즐겨찾기는 기기·주소마다 따로 저장돼요. PC(localhost)에 모아 둔 즐겨찾기는 설정 → **백업 파일 저장** 후 휴대폰의 배포 사이트에서 **백업 불러오기**로 옮기거나, 리스트 링크로 다시 가져오면 돼요.
