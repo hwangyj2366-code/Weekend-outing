@@ -1,5 +1,5 @@
 // 오프라인용 최소 서비스 워커: 화면 파일은 네트워크 우선, 실패하면 저장본. API는 캐시하지 않아요.
-const CACHE = 'weekend-shell-v7';
+const CACHE = 'weekend-shell-v8';
 const SHELL = ['./', 'index.html', 'app.js', 'core.js', 'config.js', 'icon.svg', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'manifest.webmanifest'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {

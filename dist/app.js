@@ -17,7 +17,7 @@
   let saved = loaded.places;
   if (loaded.migrated) persist(saved, true);
 
-  const defaults = { region: 'sg', homeGroup: '', env: '', favGroup: 'kids', favCat: '', favRegion: '', favOrder: 'near', popSort: 'score', popArea: 'sg', mapApp: 'naver', pickFrom: 'all', homeGroups: ['kids', 'camp', 'food'] };
+  const defaults = { region: 'sg', homeGroup: '', env: '', favGroup: 'kids', favCat: '', favRegion: '', favOrder: 'near', popSort: 'score', popArea: 'all', popSub: '', mapApp: 'naver', pickFrom: 'all', homeGroups: ['kids', 'camp', 'food'] };
   let ui = { ...defaults };
   try {
     const s = JSON.parse(localStorage.getItem(C.SETTINGS_KEY) || '{}');
@@ -165,7 +165,11 @@
   }
 
   // ---------- 화면: 인기 (전체 목록) ----------
-  const AREA_TABS = [['sg', '서울·경기'], ['other', '그 외 지역'], ['all', '전국']];
+  const AREA_TABS = [['all', '전국'], ['sg', '서울·경기'], ['other', '그 외 지역']];
+  // 세부 지역: 서울·경기 파일은 서울/경기로 나누고, 나머지는 파일(지역) 단위
+  const SUBS = ['서울', '경기', 'incheon', 'gangwon', 'chung', 'jeolla', 'gyeong', 'jeju'];
+  const subKey = (p) => ((p.area || 'sg') === 'sg' ? (C.regionToken(p) === '경기' ? '경기' : '서울') : p.area);
+  const subLabel = (k) => { const r = C.REGIONS.find((x) => x.id === k); return r ? r.label : k; };
   function nationRows() {
     const want = (a) => ui.popArea === 'all' || (ui.popArea === 'sg') === (a === 'sg');
     const places = AREAS.filter(want).flatMap((a) => nation.byArea[a] || []);
@@ -181,17 +185,23 @@
     const loading = nation.status !== 'ok';
     $('popStatus2').textContent = loading ? '전국 인기 장소를 불러오는 중…' : '이번 주말 행사(한국관광공사) · 티맵 연관 관광지 순위 · 매일 아침 업데이트';
     $('popStatus2').classList.remove('off');
-    const rows = loading ? [] : nationRows();
+    const all = loading ? [] : nationRows();
+    const counts = countBy(all, subKey);
+    const subs = SUBS.filter((k) => counts[k]);
+    if (ui.popSub && !counts[ui.popSub]) ui.popSub = '';
+    const rows = ui.popSub ? all.filter((p) => subKey(p) === ui.popSub) : all;
     const near = ui.popSort === 'near' && here;
-    $('popBar').innerHTML = `<span class="muted">${rows.length}곳</span>` + seg('data-psort', near ? 'near' : 'score', [['score', '인기순'], ['near', '거리순']]);
+    // 정렬 줄 왼쪽: 전체 + 세부 지역 고르기
+    $('popBar').innerHTML = `<select id="popSub" class="subsel" aria-label="세부 지역"><option value="">전체 ${all.length}곳</option>` +
+      subs.map((k) => `<option value="${esc(k)}" ${ui.popSub === k ? 'selected' : ''}>${esc(subLabel(k))} ${counts[k]}곳</option>`).join('') + '</select>' +
+      seg('data-psort', near ? 'near' : 'score', [['score', '인기순'], ['near', '거리순']]);
     if (loading) { $('popAll').innerHTML = ''; return; }
     if (!rows.length) { $('popAll').innerHTML = '<div class="empty"><p>이 조건에 맞는 인기 장소가 없어요.</p></div>'; return; }
-    // 거리순은 한 목록, 인기순은 서울·경기 밖이면 지역별로 묶어요.
-    if (near || ui.popArea === 'sg') { $('popAll').innerHTML = `<div class="list">${(near ? C.byDistance(rows, here) : rows).map(itemRow).join('')}</div>`; return; }
-    $('popAll').innerHTML = AREAS.map((a) => {
-      const list = rows.filter((p) => (p.area || 'sg') === a);
-      const r = C.REGIONS.find((x) => x.id === a);
-      return list.length ? `<div class="group-head"><h3>📍 ${esc(r ? r.label : a)} <span class="muted">${list.length}곳</span></h3></div><div class="list">${list.map(itemRow).join('')}</div>` : '';
+    // 거리순이나 세부 지역을 고르면 한 목록, 아니면 지역별로 묶어요.
+    if (near || ui.popSub || subs.length < 2) { $('popAll').innerHTML = `<div class="list">${(near ? C.byDistance(rows, here) : rows).map(itemRow).join('')}</div>`; return; }
+    $('popAll').innerHTML = subs.map((k) => {
+      const list = rows.filter((p) => subKey(p) === k);
+      return `<div class="group-head"><h3>📍 ${esc(subLabel(k))} <span class="muted">${list.length}곳</span></h3></div><div class="list">${list.map(itemRow).join('')}</div>`;
     }).join('');
   }
 
@@ -639,7 +649,7 @@
       }
       ui[key] = v; saveUi(); render(); return;
     }
-    if ((el = q('[data-parea]'))) { ui.popArea = el.dataset.parea; saveUi(); render(); return; }
+    if ((el = q('[data-parea]'))) { ui.popArea = el.dataset.parea; ui.popSub = ''; saveUi(); render(); return; }
     if ((el = q('[data-mapapp]'))) { ui.mapApp = el.dataset.mapapp; saveUi(); render(); toast(`장소는 ${MAP_APPS[ui.mapApp]}로 열어요`); return; }
     if ((el = q('[data-fcat]'))) { ui.favCat = el.dataset.fcat; ui.favRegion = ''; saveUi(); render(); return; }
     if ((el = q('[data-freg]'))) { ui.favRegion = el.dataset.freg; saveUi(); render(); return; }
@@ -664,6 +674,7 @@
   });
   document.addEventListener('change', (e) => {
     const t = e.target;
+    if (t.id === 'popSub') { ui.popSub = t.value; saveUi(); render(); }
     if (t.id === 'regionPill') { ui.region = t.value; saveUi(); loadLive(); render(); }
     if (t.dataset.hg) {
       const id = t.dataset.hg;
@@ -679,7 +690,8 @@
   $('pasteGo').onclick = runPaste;
   $('popInfo').onclick = $('setPopInfo').onclick = () => $('popDlg').showModal();
   $('popMore').onclick = () => {
-    ui.popArea = ['sg', 'seoul', 'gyeonggi'].includes(ui.region) ? 'sg' : ui.region === 'all' ? 'all' : 'other'; saveUi();
+    ui.popArea = ['sg', 'seoul', 'gyeonggi'].includes(ui.region) ? 'sg' : ui.region === 'all' ? 'all' : 'other';
+    ui.popSub = { seoul: '서울', gyeonggi: '경기' }[ui.region] || (SUBS.includes(ui.region) ? ui.region : ''); saveUi();
     location.hash = '#popular';
   };
   // 배경(바깥) 누르면 시트 닫기
