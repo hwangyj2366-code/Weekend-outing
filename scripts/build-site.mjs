@@ -7,7 +7,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { discover, mergeDiscover } from '../supabase/functions/_shared/tour.js';
+import { checkKey, discover, mergeDiscover } from '../supabase/functions/_shared/tour.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -30,20 +30,24 @@ await fs.rm(out, { recursive: true, force: true });
 await fs.cp(path.join(root, 'dist'), out, { recursive: true });
 await fs.mkdir(path.join(out, 'data'), { recursive: true });
 
+// 키가 틀렸거나 공공데이터 서버에 닿지 않으면 모든 호출이 조용히 빈 결과가 되니, 먼저 한 번 확인해요.
+const check = KEY ? hide(await checkKey(KEY)) : '키 없음';
+console.log(`공공데이터 확인: ${check}`);
 const summary = [];
 for (const region of DATA_REGIONS) {
   const started = Date.now();
   const prev = await previous(region);
   let body = null;
-  if (KEY) {
+  if (check === 'ok') {
     try { body = mergeDiscover(prev, await discover(KEY, region, true)); }
     catch (e) { console.warn(`[${region}] 만들기 실패: ${hide(e.message)}`); }
   }
   // 이번에 못 만들었으면 이전 파일을 그대로 이어 받아요(30일 넘은 건 버려요).
+  if (body && !body.places.length && prev?.places?.length) body = null; // 빈 결과로 덮어쓰지 않기
   if (!body && prev && Date.now() - new Date(prev.fetchedAt).getTime() < 30 * 24 * 3600 * 1000) body = prev;
   if (!body) { summary.push(`${region}: 데이터 없음(앱은 기본 추천을 보여줘요)`); continue; }
   await fs.writeFile(path.join(out, 'data', `discover-${region}.json`), JSON.stringify(body));
   summary.push(`${region}: ${body.places.length}곳, 위치 ${body.places.filter((p) => p.lat != null).length}곳, ${Math.round((Date.now() - started) / 1000)}초${body === prev ? ' (이전 데이터)' : ''}`);
 }
-await fs.writeFile(path.join(out, 'data', 'index.json'), JSON.stringify({ builtAt: new Date().toISOString(), regions: DATA_REGIONS }));
+await fs.writeFile(path.join(out, 'data', 'index.json'), JSON.stringify({ builtAt: new Date().toISOString(), regions: DATA_REGIONS, check, summary }));
 console.log(summary.join('\n'));

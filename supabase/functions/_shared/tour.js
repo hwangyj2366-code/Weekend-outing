@@ -61,6 +61,12 @@ async function call(key, base, op, params) {
   return Array.isArray(items) ? items : items && typeof items === 'object' ? [items] : [];
 }
 
+// 키·접속 확인용 한 번 호출. pool()은 개별 실패를 삼키므로, 전부 실패하는 경우를 여기서 먼저 잡아요.
+export async function checkKey(key) {
+  try { await call(key, KOR, 'areaBasedList2', { lDongRegnCd: '11', contentTypeId: '14', numOfRows: '1' }); return 'ok'; }
+  catch (e) { return String(e?.message ?? e); }
+}
+
 async function pool(list, n, fn) {
   const out = []; let i = 0;
   await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => {
