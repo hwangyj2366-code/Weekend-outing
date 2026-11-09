@@ -5,6 +5,7 @@
 //     — 이전에 배포한 파일(SITE_URL)과 합쳐서, 서버가 불안정한 날에도 목록이 줄지 않게 해요.
 // 환경 변수: TOUR_API_KEY(없으면 이전 데이터만 이어 받기), SITE_URL(예: https://아이디.github.io/weekend-outing)
 import fs from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkKey, discover, mergeDiscover } from '../supabase/functions/_shared/tour.js';
@@ -31,6 +32,8 @@ await fs.cp(path.join(root, 'dist'), out, { recursive: true });
 await fs.mkdir(path.join(out, 'data'), { recursive: true });
 
 // 키가 틀렸거나 공공데이터 서버에 닿지 않으면 모든 호출이 조용히 빈 결과가 되니, 먼저 한 번 확인해요.
+// keyId: 키 자체가 아니라 길이와 해시 앞 8자리 — PC의 키와 같은 값이 들어갔는지 비교할 때만 써요.
+const keyId = KEY ? `${KEY.length}자 #${createHash('sha256').update(KEY).digest('hex').slice(0, 8)}` : '';
 const check = KEY ? hide(await checkKey(KEY)) : '키 없음';
 console.log(`공공데이터 확인: ${check}`);
 const summary = [];
@@ -49,5 +52,5 @@ for (const region of DATA_REGIONS) {
   await fs.writeFile(path.join(out, 'data', `discover-${region}.json`), JSON.stringify(body));
   summary.push(`${region}: ${body.places.length}곳, 위치 ${body.places.filter((p) => p.lat != null).length}곳, ${Math.round((Date.now() - started) / 1000)}초${body === prev ? ' (이전 데이터)' : ''}`);
 }
-await fs.writeFile(path.join(out, 'data', 'index.json'), JSON.stringify({ builtAt: new Date().toISOString(), regions: DATA_REGIONS, check, summary }));
+await fs.writeFile(path.join(out, 'data', 'index.json'), JSON.stringify({ builtAt: new Date().toISOString(), regions: DATA_REGIONS, check, keyId, summary }));
 console.log(summary.join('\n'));
