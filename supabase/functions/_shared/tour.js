@@ -195,7 +195,14 @@ async function festivals(key, provs) {
       });
     }
   });
-  return out.slice(0, 12);
+  const top = out.slice(0, 12);
+  // 행사 공식 사이트 — 공통정보 homepage는 '공식 홈페이지 https://…' 같은 글이나 <a> 태그라 첫 주소만 꺼내요.
+  await pool(top, 6, async (f) => {
+    const [it] = await call(key, KOR, 'detailCommon2', { contentId: f.id.replace('fest-', '') });
+    const url = (/https?:\/\/[^\s"'<>]+/.exec(String(it?.homepage ?? '')) || [])[0];
+    if (url) f.homepage = url.replace(/[.,)]+$/, '');
+  });
+  return top;
 }
 
 async function listed(key, provs) {
