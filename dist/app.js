@@ -19,15 +19,23 @@
   let saved = loaded.places;
   if (loaded.migrated) persist(saved, true);
 
-  const defaults = { region: 'sg', homeGroup: '', env: '', favGroup: 'kids', favCat: '', favRegion: '', favOrder: 'near', popSort: 'score', popSub: '', evWhen: 'weekend', evSub: '', evSort: 'date', mapApp: 'naver', pickFrom: 'all', homeGroups: ['kids', 'camp', 'food'], customGroups: [] };
+  const defaults = { region: 'sg', homeCat: '', favRecCat: '', env: '', favSrc: '', favCat: '', favRegion: '', favOrder: 'near', popSort: 'score', popSub: '', evWhen: 'weekend', evSub: '', evSort: 'date', mapApp: 'naver', pickFrom: 'all', homeCats: null, customGroups: [] };
   let ui = { ...defaults };
   try {
     const s = JSON.parse(localStorage.getItem(C.SETTINGS_KEY) || '{}');
-    ui = { ...defaults, ...s, homeGroup: s.homeGroup ?? s.category ?? '' };
-    if (!C.GROUPS.some((g) => g.id === ui.homeGroup)) ui.homeGroup = '';
-    if (!Array.isArray(ui.homeGroups)) ui.homeGroups = defaults.homeGroups;
+    ui = { ...defaults, ...s };
     if (!Array.isArray(ui.customGroups)) ui.customGroups = [];
-    ui.homeGroups = ui.homeGroups.filter((id) => C.GROUPS.some((g) => g.id === id)); // 없어진 '여행지' 묶음 정리
+    // 예전 설정(큰 분류 homeGroups)은 그 묶음의 분류들로 옮겨요.
+    if (!Array.isArray(ui.homeCats) && Array.isArray(s.homeGroups)) ui.homeCats = Object.keys(C.TYPES).filter((k) => s.homeGroups.includes(C.TYPES[k].group));
+  } catch { /* 기본값 */ }
+  try {
+    if (!C.TYPES[ui.homeCat]) ui.homeCat = ''; // 홈 '요즘 인기'와 인기 탭의 분류
+    if (!C.TYPES[ui.favRecCat]) ui.favRecCat = ''; // 홈 '즐겨찾기에서 추천'의 분류
+    if (ui.favCat && !C.TYPES[ui.favCat]) ui.favCat = '';
+    // 홈에 보일 분류: 처음엔 나들이 분류 + 음식점
+    if (!Array.isArray(ui.homeCats)) ui.homeCats = [...C.OUTING, '맛집·카페'];
+    ui.homeCats = ui.homeCats.filter((k) => C.TYPES[k]);
+    delete ui.homeGroup; delete ui.homeGroups; delete ui.favGroup; // 예전 큰 분류 설정
   } catch { /* 기본값 */ }
   let live = { status: 'loading', places: [], meta: null };
   let order = new Map(); // 홈 즐겨찾기 추천 섞기 순서
@@ -109,9 +117,67 @@
     }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60 * 1000 });
   }
   const isSaved = (p) => saved.some((s) => s.id === p.id || C.isDup(s, p));
+  // 즐겨찾기 출처: 지도 앱 리스트에서 가져온 곳 / 이 앱에서 ♡ 누른 곳 / 그 밖(직접·파일·공유)
+  const SRC = { naver: '🟢 네이버', google: '🔵 구글', app: '♥ 이 앱', etc: '📄 기타' };
+  function srcOf(p) {
+    const s = String(p.source || '');
+    if (s === 'popular' || s === 'seed') return 'app';
+    if (/^naver/.test(s)) return 'naver';
+    if (/^google/.test(s)) return 'google';
+    const m = C.mapSource(p.url);
+    return m === '네이버지도' ? 'naver' : m === '구글지도' ? 'google' : 'etc';
+  }
+  // 저장돼 있으면 ♥(누르면 빼기), 인기 장소면 ♡(누르면 저장)
+  const heartBtn = (p, cls) => (isSaved(p) ? `<button class="${cls} saved" data-unsave="${esc(p.id)}" aria-label="${esc(p.name)} 즐겨찾기에서 빼기">♥</button>`
+    : p.origin ? `<button class="${cls}" data-save="${esc(p.id)}" aria-label="${esc(p.name)} 저장">♡</button>` : '');
+  // 제외 목록: 네이버·구글(또는 파일)에서 가져왔다가 뺀 곳을 장소 정보째 기억해요.
+  // 리스트를 다시 가져오거나 [업데이트]해도 이 곳들은 건너뛰고, 설정 → 제외한 즐겨찾기에서 되돌릴 수 있어요.
+  const EXCL_KEY = 'weekend-excluded-v1';
+  const readExcluded = () => { try { const v = JSON.parse(localStorage.getItem(EXCL_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
+  const writeExcluded = (v) => { try { localStorage.setItem(EXCL_KEY, JSON.stringify(v.slice(-3000))); return true; } catch { return false; } };
+  const placeKeys = (p) => [C.canonicalUrl(p.url), 'n:' + C.normName(p.name)].filter(Boolean);
+  const hits = (x, p) => { const ks = placeKeys(p); return (x.keys || []).some((k) => ks.includes(k)); };
+  const isExcluded = (p) => readExcluded().some((x) => hits(x, p));
+  // 즐겨찾기에서 빼기. 이 앱에서 ♡한 곳은 그냥 빼고, 가져온 곳은 제외 목록에 넣어요.
+  function removePlaces(list) {
+    if (!list.length || !persist(saved.filter((x) => !list.includes(x)))) return false;
+    const at = new Date().toISOString();
+    const add = list.filter((p) => srcOf(p) !== 'app').map((p) => ({ keys: placeKeys(p), at, place: { name: p.name, url: p.url, category: p.category, env: p.env, region: p.region, note: p.note, list: p.list, source: p.source, lat: p.lat, lng: p.lng } }));
+    if (add.length) writeExcluded([...readExcluded().filter((x) => !add.some((a) => a.keys.some((k) => x.keys.includes(k)))), ...add]);
+    return true;
+  }
+  function unsave(id) {
+    const p = findPlace(id);
+    if (!p) return false;
+    const mine = saved.filter((x) => x.id === id || C.isDup(x, p));
+    if (!mine.length) return false;
+    const from = srcOf(mine[0]);
+    if (from !== 'app' && !confirm(`‘${mine[0].name}’을(를) 즐겨찾기에서 뺄까요?\n${SRC[from]}에서 가져온 곳이라 제외 목록에 넣어요. 리스트를 다시 [업데이트]해도 들어오지 않고, 설정 → 제외한 즐겨찾기에서 되돌릴 수 있어요.`)) return false;
+    if (!removePlaces(mine)) return false;
+    toast(`‘${mine[0].name}’을(를) 즐겨찾기에서 뺐어요`);
+    return true;
+  }
+  // 지금 보이는 목록(출처·분류·지역·검색) 전체 제외
+  function excludeShown() {
+    const { rows } = favRows();
+    if (!rows.length) return;
+    const what = [ui.favSrc && SRC[ui.favSrc], ui.favCat && C.label(ui.favCat), ui.favRegion].filter(Boolean).join(' · ') || '전체';
+    if (!confirm(`‘${what}’ ${rows.length}곳을 모두 즐겨찾기에서 뺄까요?\n가져온 곳은 제외 목록에 넣어서, 리스트를 다시 [업데이트]해도 들어오지 않아요. 설정 → 제외한 즐겨찾기에서 되돌릴 수 있어요.`)) return;
+    if (removePlaces(rows)) { ui.favCat = ''; ui.favRegion = ''; saveUi(); render(); toast(`${rows.length}곳을 뺐어요`); }
+  }
+  function restoreExcluded(i) {
+    const all = readExcluded();
+    const list = i === 'all' ? all : [all[Number(i)]].filter(Boolean);
+    if (!list.length) return;
+    if (i === 'all' && !confirm(`제외한 ${list.length}곳을 모두 즐겨찾기로 되돌릴까요?`)) return;
+    writeExcluded(all.filter((x) => !list.includes(x)));
+    const r = saveCandidates(list.map((x) => x.place));
+    render();
+    if (r) toast(list.length === 1 ? `‘${list[0].place.name}’을(를) 되돌렸어요` : `${r.added.length}곳을 되돌렸어요`);
+  }
 
   function mini(p) {
-    const heart = p.origin && !isSaved(p) ? `<button class="heart" data-save="${esc(p.id)}" aria-label="${esc(p.name)} 저장">♡</button>` : '';
+    const heart = heartBtn(p, 'heart');
     return `<article class="mini" data-detail="${esc(p.id)}" tabindex="0" role="button">${art(p, heart)}<div class="body">` +
       `<span class="muted">${metaLine(p)}</span><h3>${esc(p.name)}</h3>` +
       popLine(p) + '</div></article>';
@@ -124,8 +190,8 @@
     const note = p.note || (p.origin === 'seed' ? '' : '');
     const savedHere = isSaved(p);
     const own = saved.find((s) => s.id === p.id);
-    const actions = own ? `<button data-edit="${esc(own.id)}">✏️ 분류·편집</button>`
-      : savedHere ? '<span class="tag">즐겨찾기에 있음</span>' : `<button data-save="${esc(p.id)}">♡ 즐겨찾기 저장</button>`;
+    const actions = (own ? `<button data-edit="${esc(own.id)}">✏️ 분류·편집</button>` : '') +
+      (savedHere ? `<button data-unsave="${esc(p.id)}">♥ 즐겨찾기에서 빼기</button>` : `<button data-save="${esc(p.id)}">♡ 즐겨찾기 저장</button>`);
     const km = C.distanceKm(here, p);
     return `${art(p)}<div class="muted" style="margin-top:12px">${metaLine(p, '지역 미확인')}${km != null ? ' <span class="muted">(현재 위치에서 직선거리)</span>' : ''}</div>` +
       `<h2>${esc(p.name)}</h2>${note ? `<p>${esc(note)}</p>` : ''}${pop}${hours}` +
@@ -134,9 +200,9 @@
   }
 
   // ---------- 데이터 묶음 ----------
-  const popularPool = () => C.discoverPool(live.places, C.SEED, saved);
+  const popularPool = () => C.discoverPool(live.places, C.SEED, []);
   function homeFilter(extra = {}) {
-    return { group: ui.homeGroup, env: ui.env, region: ui.region, ...extra };
+    return { env: ui.env, region: ui.region, ...extra };
   }
   function findPlace(id) {
     return saved.find((p) => p.id === id) || live.places.find((p) => p.id === id) || evData.list.find((p) => p.id === id) ||
@@ -156,12 +222,14 @@
       : r === 'saved' ? '<button class="primary" data-open-import>＋ 가져오기</button>' : r === 'events' ? '<button class="ghost small" data-back>‹ 뒤로</button>' : '';
     if (r === 'home') renderHome(); else if (r === 'popular') renderPopular(); else if (r === 'events') renderEvents(); else if (r === 'saved') renderSaved(); else renderSettings();
   }
-  const groupChips = () => `<button data-hgroup="" class="${ui.homeGroup ? '' : 'active'}">전체</button>` +
-    C.GROUPS.filter((g) => g.outing || ui.homeGroups.includes(g.id))
-      .map((g) => `<button data-hgroup="${g.id}" class="${ui.homeGroup === g.id ? 'active' : ''}">${g.icon} ${esc(g.short)}</button>`).join('');
-  const envChips = () => [['', '실내·야외 모두'], ['실내', '☔ 실내'], ['야외', '☀️ 야외']]
+  // 분류 한 줄: 전체 + 설정에서 고른 분류(박물관·체험·놀이·캠핑장·음식점…)
+  // attr: data-hcat(요즘 인기·인기 탭) / data-rcat(즐겨찾기에서 추천)
+  const catChips = (attr = 'data-hcat', cur = ui.homeCat) => `<button ${attr}="" class="${cur ? '' : 'active'}">전체</button>` +
+    C.categories().filter((k) => ui.homeCats.includes(k) || cur === k)
+      .map((k) => `<button ${attr}="${esc(k)}" class="${cur === k ? 'active' : ''}">${C.TYPES[k].icon} ${esc(C.shortLabel(k))}</button>`).join('');
+  const envChips = () => [['', '전체'], ['실내', '☔ 실내'], ['야외', '☀️ 야외']]
     .map(([v, t]) => `<button data-env="${v}" class="${ui.env === v ? 'active' : ''}">${t}</button>`).join('');
-  const popRows = () => C.filterPlaces(popularPool(), homeFilter({ outingOnly: true }))
+  const popRows = () => C.filterPlaces(popularPool(), homeFilter({ category: ui.homeCat, outingOnly: true }))
     .sort((a, b) => ((b.popularity && b.popularity.score) || 0) - ((a.popularity && a.popularity.score) || 0));
   function showStatus(id) {
     const s = liveStatus();
@@ -177,14 +245,15 @@
   const subShort = (k) => SUB_SHORT[k] || subLabel(k);
   function nationRows() {
     const places = AREAS.flatMap((a) => nation.byArea[a] || []);
-    const pool = C.discoverPool(places, C.SEED.map((p) => ({ ...p, area: 'sg' })), saved);
-    return C.filterPlaces(pool, { group: ui.homeGroup, env: ui.env, region: 'all', outingOnly: true })
+    // 인기 탭은 즐겨찾기에 저장한 곳도 그대로 보여줘요(♥ 표시). 홈 '요즘 인기'는 아직 저장 안 한 곳만.
+    const pool = C.discoverPool(places, C.SEED.map((p) => ({ ...p, area: 'sg' })), []);
+    return C.filterPlaces(pool, { category: ui.homeCat, env: ui.env, region: 'all', outingOnly: true })
       .sort((x, y) => ((y.popularity && y.popularity.score) || 0) - ((x.popularity && x.popularity.score) || 0));
   }
   function renderPopular() {
     loadNation(); loadEvents();
     if (evData.status === 'ok') $('evBannerSub').textContent = `전국 축제·행사 — ${evPeriods().map((x) => `${x.label} ${evRows(x).length}`).join(' · ')}`;
-    $('popGroups').innerHTML = groupChips();
+    $('popGroups').innerHTML = catChips();
     $('popEnv').innerHTML = envChips();
     const loading = nation.status !== 'ok';
     $('popStatus2').textContent = loading ? '전국 인기 장소를 불러오는 중…' : '이번 주말 행사(한국관광공사) · 티맵 연관 관광지 순위 · 매일 아침 업데이트';
@@ -238,7 +307,7 @@
     const today = ymdOf(new Date());
     const days = Math.round((dateOf(p.start) - dateOf(today)) / 86400000);
     const tag = p.start <= today ? '<span class="tag on">진행 중</span>' : `<span class="tag">${days === 1 ? '내일' : `D-${days}`}</span>`;
-    const heart = !isSaved(p) ? `<button class="heart-s" data-save="${esc(p.id)}" aria-label="${esc(p.name)} 저장">♡</button>` : '';
+    const heart = heartBtn(p, 'heart-s');
     const ev = eventHref(p);
     return `<div class="item evrow"><div class="ico" style="background:#fbe2cf" aria-hidden="true">🎪${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" onerror="this.remove()">` : ''}</div>` +
       `<div class="txt" data-detail="${esc(p.id)}" role="button" tabindex="0"><b>${esc(p.name)}</b><span class="when">${esc(evDates(p))} ${tag}</span>` +
@@ -286,7 +355,8 @@
   }
   function renderHome() {
     $('weekendLabel').textContent = weekendText();
-    $('homeGroups').innerHTML = groupChips();
+    $('homePopCats').innerHTML = catChips('data-hcat', ui.homeCat);
+    $('homeFavCats').innerHTML = catChips('data-rcat', ui.favRecCat);
     $('homeEnv').innerHTML = envChips();
 
     // ① 인기 (홈에는 10곳만, 나머지는 '더보기' → 인기 탭)
@@ -297,32 +367,35 @@
       : `<div class="empty" style="flex:1"><p>이 조건에 맞는 인기 장소가 없어요.</p>${widenButtons()}</div>`;
 
     // ② 즐겨찾기에서
-    const regionOk = C.filterPlaces(saved, homeFilter({ group: '', allowUnknownRegion: true }));
-    const showGroups = (ui.homeGroup ? [C.groupInfo(ui.homeGroup)] : C.GROUPS.filter((g) => ui.homeGroups.includes(g.id)));
+    const regionOk = C.filterPlaces(saved, homeFilter({ category: ui.favRecCat, allowUnknownRegion: true }));
+    const showCats = ui.favRecCat ? [ui.favRecCat] : C.categories().filter((k) => ui.homeCats.includes(k));
     if (!saved.length) {
       $('favRecs').innerHTML = `<div class="empty"><p>네이버·구글지도에 저장해 둔 곳을 가져오면<br>분류별로 골라서 추천해 드려요.</p><button class="primary big" data-open-import>＋ 지도 즐겨찾기 가져오기</button></div>`;
       return;
     }
-    const html = showGroups.map((g) => {
-      const rows = regionOk.filter((p) => C.groupOf(p.category) === g.id);
+    const html = showCats.map((k) => {
+      const rows = regionOk.filter((p) => p.category === k);
       if (!rows.length) return '';
       rows.forEach((p) => { if (!order.has(p.id)) order.set(p.id, Math.random()); });
-      const top = [...rows].sort((a, b) => order.get(a.id) - order.get(b.id)).slice(0, 6);
-      return `<div class="group-head"><h3>${g.icon} ${esc(g.label)} <span class="muted">${rows.length}곳</span></h3><button class="ghost small" data-goto-group="${g.id}">전체 보기 ›</button></div>` +
-        `<div class="scroller">${top.map(mini).join('')}</div>`;
+      const mixed = [...rows].sort((a, b) => order.get(a.id) - order.get(b.id));
+      // 사진이 다 있으면 카드로, 아니면(지도에서 가져온 곳은 대부분 사진이 없어요) 그림 없이 목록으로
+      const cards = mixed.slice(0, 6).every((p) => p.image);
+      const top = mixed.slice(0, cards ? 6 : 4);
+      return `<div class="group-head"><h3>${C.TYPES[k].icon} ${esc(C.label(k))} <span class="muted">${rows.length}곳</span></h3><button class="ghost small" data-goto-cat="${esc(k)}">전체 보기 ›</button></div>` +
+        (cards ? `<div class="scroller">${top.map(mini).join('')}</div>` : `<div class="list">${top.map(itemRow).join('')}</div>`);
     }).join('');
-    $('favRecs').innerHTML = html || `<div class="empty"><p>지금 조건(${esc(condText())})에 맞는 즐겨찾기가 없어요.</p>${widenButtons()}</div>`;
+    $('favRecs').innerHTML = html || `<div class="empty"><p>지금 조건(${esc([condText(), ui.favRecCat && C.label(ui.favRecCat)].filter(Boolean).join(' · '))})에 맞는 즐겨찾기가 없어요.</p>${widenButtons(ui.favRecCat)}</div>`;
   }
-  function widenButtons() {
+  function widenButtons(cat = ui.homeCat) {
     const b = [];
-    if (ui.homeGroup) b.push('<button data-widen="group">분류 전체</button>');
+    if (cat) b.push(`<button data-widen="${cat === ui.favRecCat ? 'favcat' : 'group'}">분류 전체</button>`);
     if (ui.env) b.push('<button data-widen="env">실내·야외 모두</button>');
     if (ui.region !== 'all') b.push('<button data-widen="region">전국으로 넓히기</button>');
     return `<div class="row wrapline" style="justify-content:center">${b.join('')}</div>`;
   }
   function condText() {
     const r = C.REGIONS.find((x) => x.id === ui.region);
-    return [r && r.label, ui.homeGroup ? C.groupInfo(ui.homeGroup).label : '나들이 전체', ui.env || '실내·야외 모두'].join(' · ');
+    return [r && r.label, ui.env || '실내·야외 모두'].join(' · ');
   }
   function liveStatus() {
     if (live.status === 'loading') return { text: '최신 인기 장소를 불러오는 중… 그동안 기본 추천을 보여드려요.', off: false };
@@ -335,12 +408,14 @@
   }
 
   // ---------- 화면: 즐겨찾기 ----------
-  // 목록 한 줄: 누르면 자세히(편집은 자세히 안에서), 오른쪽은 설정한 지도 앱으로 열기. 인기 장소는 ♡ 저장도.
+  // 목록 한 줄: 누르면 자세히(편집은 자세히 안에서), 오른쪽은 ♥/♡(빼기·저장)와 설정한 지도 앱으로 열기.
   function itemRow(p) {
     const t = T(p);
-    const heart = p.origin && !isSaved(p) ? `<button class="heart-s" data-save="${esc(p.id)}" aria-label="${esc(p.name)} 저장">♡</button>` : '';
+    const heart = heartBtn(p, 'heart-s');
+    // 내 즐겨찾기 줄에는 어디서 가져왔는지 앞에 표시
+    const own = !p.origin && saved.some((x) => x.id === p.id);
     return `<div class="item"><div class="ico" style="background:${t.bg}" aria-hidden="true">${t.icon}</div>` +
-      `<div class="txt" data-detail="${esc(p.id)}" role="button" tabindex="0"><b>${esc(p.name)}</b><span class="muted">${metaLine(p, '지역 미확인')}</span>` +
+      `<div class="txt" data-detail="${esc(p.id)}" role="button" tabindex="0"><b>${esc(p.name)}</b><span class="muted">${own ? esc(SRC[srcOf(p)]) + ' · ' : ''}${metaLine(p, '지역 미확인')}</span>` +
       popLine(p) + '</div>' +
       `<div class="acts">${heart}${mapLink(p)}</div></div>`;
   }
@@ -348,31 +423,33 @@
   const REGION_FIRST = ['서울', '경기', '인천', '강원'];
   const regionKey = (p) => C.regionToken(p) || UNKNOWN;
   const countBy = (rows, key) => rows.reduce((m, p) => { const k = key(p); m[k] = (m[k] || 0) + 1; return m; }, {});
-  // 즐겨찾기: 큰 분류(필수) → 세부 분류(전체 포함) → 지역(전체 포함)
+  // 즐겨찾기: 출처(전체·네이버·구글·이 앱) → 분류(전체 포함) → 지역(전체 포함)
+  const inSrc = () => (ui.favSrc ? saved.filter((p) => srcOf(p) === ui.favSrc) : saved);
   function favRows() {
-    const inGroup = saved.filter((p) => C.groupOf(p.category) === ui.favGroup);
-    const inCat = ui.favCat ? inGroup.filter((p) => p.category === ui.favCat) : inGroup;
+    const base = inSrc();
+    const inCat = ui.favCat ? base.filter((p) => p.category === ui.favCat) : base;
     const inRegion = ui.favRegion ? inCat.filter((p) => regionKey(p) === ui.favRegion) : inCat;
-    return { inGroup, inCat, rows: C.filterPlaces(inRegion, { q: $('search').value }) };
+    return { inCat, rows: C.filterPlaces(inRegion, { q: $('search').value }) };
   }
   function renderSaved() {
-    const groupCounts = countBy(saved, (p) => C.groupOf(p.category));
-    const groups = C.GROUPS.filter((g) => groupCounts[g.id]);
-    if (!groups.some((g) => g.id === ui.favGroup)) { ui.favGroup = (groups[0] || C.GROUPS[0]).id; ui.favCat = ''; ui.favRegion = ''; }
-    $('favGroups').innerHTML = groups.map((g) => `<button data-fgroup="${g.id}" class="${ui.favGroup === g.id ? 'active' : ''}">${g.icon} ${esc(g.short)} ${groupCounts[g.id]}</button>`).join('');
+    const srcCounts = countBy(saved, srcOf);
+    const srcs = Object.keys(SRC).filter((k) => srcCounts[k]);
+    if (ui.favSrc && !srcCounts[ui.favSrc]) ui.favSrc = '';
+    $('favSrc').hidden = srcs.length < 2;
+    $('favSrc').innerHTML = `<button data-fsrc="" class="${ui.favSrc ? '' : 'active'}">전체 ${saved.length}</button>` +
+      srcs.map((k) => `<button data-fsrc="${k}" class="${ui.favSrc === k ? 'active' : ''}">${SRC[k]} ${srcCounts[k]}</button>`).join('');
+    const base = inSrc();
+    const catCounts = countBy(base, (p) => p.category);
+    const cats = C.categories().filter((k) => catCounts[k]);
+    if (ui.favCat && !catCounts[ui.favCat]) { ui.favCat = ''; ui.favRegion = ''; }
+    $('favGroups').innerHTML = `<button data-fcat="" class="${ui.favCat ? '' : 'active'}">전체 ${base.length}</button>` +
+      cats.map((k) => `<button data-fcat="${esc(k)}" class="${ui.favCat === k ? 'active' : ''}">${C.TYPES[k].icon} ${esc(C.shortLabel(k))} ${catCounts[k]}</button>`).join('');
     if (!saved.length) {
-      $('favSub').innerHTML = ''; $('favRegion').innerHTML = ''; $('favMap').hidden = true;
+      $('favRegion').innerHTML = ''; $('favMap').hidden = true; $('favBulk').hidden = true;
       $('favList').innerHTML = `<div class="empty" style="margin-top:14px"><p>아직 저장한 곳이 없어요.<br>네이버·구글지도 리스트 링크만 붙이면 한 번에 정리해 드려요.</p><button class="primary big" data-open-import>＋ 지도 즐겨찾기 가져오기</button></div>`;
       return;
     }
-    const { inGroup, inCat, rows } = favRows();
-    const catCounts = countBy(inGroup, (p) => p.category);
-    const cats = Object.keys(C.TYPES).filter((k) => catCounts[k]);
-    if (ui.favCat && !catCounts[ui.favCat]) ui.favCat = '';
-    $('favSub').innerHTML = cats.length > 1
-      ? `<button data-fcat="" class="${ui.favCat ? '' : 'active'}">전체 ${inGroup.length}</button>` +
-        cats.map((k) => `<button data-fcat="${esc(k)}" class="${ui.favCat === k ? 'active' : ''}">${C.TYPES[k].icon} ${esc(C.label(k))} ${catCounts[k]}</button>`).join('')
-      : '';
+    const { inCat, rows } = favRows();
     const regCounts = countBy(inCat, regionKey);
     // 서울·경기·인천·강원을 앞에, 나머지는 많은 순, '지역 미확인'은 맨 뒤
     const first = (r) => { const i = REGION_FIRST.indexOf(r); return i < 0 ? 99 : i; };
@@ -382,6 +459,8 @@
       regs.map((r) => `<button data-freg="${esc(r)}" class="${ui.favRegion === r ? 'active' : ''}">${esc(r)} ${regCounts[r]}</button>`).join('');
     const located = rows.filter((p) => p.lat != null).length;
     $('favMap').hidden = false;
+    $('favBulk').hidden = !(ui.favCat || ui.favSrc || ui.favRegion) || !rows.length;
+    $('favBulk').innerHTML = `<button class="ghost small danger" data-exclude-shown>🚫 이 목록 ${rows.length}곳 모두 빼기</button>`;
     const near = ui.favOrder === 'near' && here;
     $('favMap').innerHTML = `<span class="row"><span class="muted">${rows.length}곳</span>` +
       seg('data-fsort', near ? 'near' : 'name', [['near', '거리순'], ['name', '가나다순']]) + '</span>' +
@@ -443,17 +522,23 @@
   function renderSettings() {
     $('setRegion').innerHTML = C.REGIONS.map((x) => `<option value="${x.id}" ${x.id === ui.region ? 'selected' : ''}>${esc(x.label)}</option>`).join('');
     $('setMapApp').innerHTML = seg('data-mapapp', ui.mapApp, Object.entries(MAP_APPS));
-    $('setGroups').innerHTML = C.GROUPS.map((g) => {
-      const c = g.custom && ui.customGroups.find((x) => x.id === g.id);
+    $('setGroups').innerHTML = C.categories().map((k) => {
+      const c = ui.customGroups.find((x) => x.label === k);
       const words = c && c.words.length ? `<span class="muted"> · 이름에 ‘${esc(c.words.join(', '))}’</span>` : '';
-      return `<div class="row between grouprow"><label class="row"><input type="checkbox" data-hg="${g.id}" ${ui.homeGroups.includes(g.id) ? 'checked' : ''}> ${g.icon} ${esc(g.label)}${words}</label>` +
-        (c ? `<button class="small ghost" data-del-group="${g.id}" aria-label="${esc(g.label)} 분류 지우기">✕</button>` : '') + '</div>';
+      return `<div class="row between grouprow"><label class="row"><input type="checkbox" data-hc="${esc(k)}" ${ui.homeCats.includes(k) ? 'checked' : ''}> ${C.TYPES[k].icon} ${esc(C.label(k))}${words}</label>` +
+        (c ? `<button class="small ghost" data-del-group="${c.id}" aria-label="${esc(k)} 분류 지우기">✕</button>` : '') + '</div>';
     }).join('');
     const s = liveStatus();
     $('setLive').textContent = live.status === 'ok' ? `연결됨 — ${s.text}` : live.status === 'loading' ? '불러오는 중…' : `연결 안 됨 — 기본 추천만 보여요.${live.error ? ` (${live.error})` : ''}`;
+    const ex = readExcluded();
+    $('setExcluded').innerHTML = ex.length
+      ? `<details><summary>${ex.length}곳 보기</summary><div class="exlist">${ex.map((x, i) => `<div class="prow"><div class="txt"><b>${esc(x.place.name)}</b><span class="muted">${esc(SRC[srcOf(x.place)])} · ${esc(C.label(x.place.category))}${x.place.region ? ' · ' + esc(x.place.region) : ''}</span></div><button class="small" data-restore="${i}">되돌리기</button></div>`).join('')}</div>` +
+        '<div class="row" style="margin-top:8px"><button class="small ghost" data-restore="all">모두 되돌리기</button></div></details>'
+      : '<p class="muted">즐겨찾기에서 ♥를 눌러 뺀 곳(네이버·구글에서 가져온 곳)이 여기에 모여요. 리스트를 다시 가져오거나 [업데이트]해도 이 곳들은 들어오지 않아요.</p>';
     const lists = readLists();
     $('setLists').innerHTML = lists.length ? lists.map((l) => `<div class="prow"><div class="txt"><b>${l.provider === 'naver' ? '🟢' : '🔵'} ${esc(l.name)}</b>` +
-      `<span class="muted">${l.count}곳 · ${new Date(l.updatedAt).toLocaleDateString('ko-KR')} 업데이트</span></div>` +
+      // 지금 즐겨찾기에 남아 있는 수(뺀 곳은 빠져요)와 제외한 수
+      `<span class="muted">${saved.filter((p) => p.list === l.name).length}곳${(() => { const k = ex.filter((x) => x.place.list === l.name).length; return k ? ` · 제외 ${k}곳` : ''; })()} · ${new Date(l.updatedAt).toLocaleDateString('ko-KR')} 업데이트</span></div>` +
       `<button class="small" data-list-update="${esc(l.url)}">업데이트</button><button class="small ghost" data-list-forget="${esc(l.url)}" aria-label="${esc(l.name)} 잊기">✕</button></div>`).join('')
       : '<p class="muted">리스트 링크로 가져오면 여기에 기억해 두고, 다음부터는 [업데이트] 한 번으로 새로 추가한 곳만 가져와요.</p>';
     $('setHere').textContent = hereStatus === 'insecure' ? '거리 표시: 이 주소(http)에서는 위치를 쓸 수 없어요. https 주소로 배포하면 자동으로 보여요.'
@@ -471,6 +556,7 @@
   function saveFromPool(id) {
     const p = findPlace(id);
     if (!p) return;
+    writeExcluded(readExcluded().filter((x) => !hits(x, p)));
     const r = saveCandidates([{ name: p.name, url: p.url, category: p.category, env: p.env, region: p.region, note: p.note, source: p.origin === 'live' ? 'popular' : 'seed', list: '인기 장소에서 저장' }]);
     if (r) toast(r.added.length ? `‘${p.name}’을(를) 즐겨찾기에 저장했어요` : '이미 저장된 곳이에요');
   }
@@ -485,7 +571,7 @@
   }
   let editingId = null;
   function fillCategories() {
-    $('eCategory').innerHTML = C.GROUPS.map((g) => `<optgroup label="${g.icon} ${esc(g.label)}">${Object.keys(C.TYPES).filter((k) => C.TYPES[k].group === g.id).map((k) => `<option value="${esc(k)}">${C.TYPES[k].icon} ${esc(C.label(k))}</option>`).join('')}</optgroup>`).join('');
+    $('eCategory').innerHTML = C.categories().map((k) => `<option value="${esc(k)}">${C.TYPES[k].icon} ${esc(C.label(k))}</option>`).join('');
   }
   fillCategories();
 
@@ -494,11 +580,11 @@
   $('ngSave').onclick = () => {
     const label = $('ngName').value.trim().slice(0, 12);
     if (!label) { toast('분류 이름을 넣어 주세요'); $('ngName').focus(); return; }
-    if (C.TYPES[label] || C.GROUPS.some((g) => g.label === label || g.short === label)) { toast('이미 있는 분류 이름이에요'); return; }
+    if (C.TYPES[label] || C.categories().some((k) => C.shortLabel(k) === label || C.label(k) === label)) { toast('이미 있는 분류 이름이에요'); return; }
     const words = $('ngWords').value.split(/[,，]/).map((s) => s.trim()).filter(Boolean).slice(0, 10);
     const g = { id: 'u' + Date.now().toString(36), label, icon: $('ngIcon').value, words };
     ui.customGroups = [...ui.customGroups, g];
-    ui.homeGroups = [...ui.homeGroups, g.id];
+    ui.homeCats = [...ui.homeCats, label];
     applyCustom();
     // 이미 저장된 곳 중 이름에 단어가 들어간 곳을 옮겨요(분류를 직접 고른 곳은 그대로).
     let moved = 0;
@@ -518,9 +604,10 @@
     const n = saved.filter((p) => p.category === g.label).length;
     if (!confirm(`‘${g.label}’ 분류를 지울까요?${n ? `\n이 분류의 즐겨찾기 ${n}곳은 지우지 않고 원래 규칙대로 다시 분류해요.` : ''}`)) return;
     ui.customGroups = ui.customGroups.filter((x) => x.id !== id);
-    ui.homeGroups = ui.homeGroups.filter((x) => x !== id);
-    if (ui.homeGroup === id) ui.homeGroup = '';
-    if (ui.favGroup === id) { ui.favGroup = 'kids'; ui.favCat = ''; ui.favRegion = ''; }
+    ui.homeCats = ui.homeCats.filter((x) => x !== g.label);
+    if (ui.homeCat === g.label) ui.homeCat = '';
+    if (ui.favRecCat === g.label) ui.favRecCat = '';
+    if (ui.favCat === g.label) { ui.favCat = ''; ui.favRegion = ''; }
     applyCustom();
     if (n) persist(saved.map((p) => { if (p.category !== g.label) return p; const c = C.infer(p.name, p.note); return { ...p, category: c, env: C.TYPES[c].env, manual: false }; }));
     saveUi(); render(); toast(`‘${g.label}’ 분류를 지웠어요`);
@@ -558,7 +645,7 @@
   function pickPool() {
     const f = homeFilter({ outingOnly: true, allowUnknownRegion: true });
     const mine = ui.pickFrom === 'new' ? [] : C.filterPlaces(saved, f);
-    const fresh = ui.pickFrom === 'mine' ? [] : C.filterPlaces(popularPool(), f);
+    const fresh = ui.pickFrom === 'mine' ? [] : C.filterPlaces(popularPool().filter((p) => !isSaved(p)), f);
     return [...mine, ...fresh];
   }
   function doPick() {
@@ -569,7 +656,7 @@
     lastPickId = p && p.id;
     $('pickConds').textContent = `${condText()} — 후보 ${rows.length}곳 중에서 골랐어요.`;
     $('pickBody').innerHTML = p ? detailHtml(p)
-      : `<div class="empty"><p>지금 조건에 맞는 후보가 없어요.</p><p class="muted">${ui.pickFrom === 'mine' && !saved.length ? '즐겨찾기가 비어 있어요. 먼저 지도 즐겨찾기를 가져오거나 ‘전체’에서 골라 보세요.' : '분류·실내야외·지역 조건을 넓혀 보세요.'}</p>${widenButtons()}</div>`;
+      : `<div class="empty"><p>지금 조건에 맞는 후보가 없어요.</p><p class="muted">${ui.pickFrom === 'mine' && !saved.length ? '즐겨찾기가 비어 있어요. 먼저 지도 즐겨찾기를 가져오거나 ‘전체’에서 골라 보세요.' : '실내·야외·지역 조건을 넓혀 보세요.'}</p>${widenButtons('')}</div>`;
     $('reroll').disabled = rows.length < 2;
     if (!$('pickDlg').open) $('pickDlg').showModal();
   }
@@ -633,17 +720,20 @@
   }
 
   function showPreview(candidates, from) {
-    preview = C.previewImport(saved, candidates);
+    const ex = readExcluded();
+    const skipped = candidates.filter((c) => !c.error && c.name && ex.some((x) => hits(x, c)));
+    preview = C.previewImport(saved, candidates.filter((c) => !skipped.includes(c)));
     const n = preview.filter((x) => x.status === 'new').length;
     const d = preview.filter((x) => x.status === 'dup').length;
     const e = preview.filter((x) => x.status === 'error');
-    if (!n && !d) { showReport({ added: [], duplicates: [], warnings: [], errors: e, located: [] }, `${from} 결과`); return; }
+    if (!n && !d) { showReport({ added: [], duplicates: [], warnings: [], errors: e, located: [], excluded: skipped.length }, `${from} 결과`); return; }
     if (!n) { // 새 장소가 없으면 미리보기 없이 위치 정보만 채우고 결과를 보여줘요
       const r = saveCandidates(preview.filter((x) => x.status === 'dup').map((x) => x.place));
-      if (r) { r.errors.push(...e); showReport(r, `${from}: 새로 추가된 곳이 없어요`); render(); }
+      if (r) { r.errors.push(...e); r.excluded = skipped.length; showReport(r, `${from}: 새로 추가된 곳이 없어요`); render(); }
       return;
     }
-    $('pvSummary').innerHTML = `불러온 장소 <b>${n + d}곳</b> — 새로 ${n}곳, 이미 저장됨 ${d}곳${e.length ? `, 오류 ${e.length}건` : ''}. 분류를 확인하고 저장할 곳을 고르세요.`;
+    $('pvSummary').innerHTML = `불러온 장소 <b>${n + d}곳</b> — 새로 ${n}곳, 이미 저장됨 ${d}곳${skipped.length ? `, 제외 목록이라 건너뜀 ${skipped.length}곳` : ''}${e.length ? `, 오류 ${e.length}건` : ''}. 분류를 확인하고 저장할 곳을 고르세요.`;
+    preview.excluded = skipped.length;
     const catOpts = (sel) => Object.keys(C.TYPES).map((k) => `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${C.TYPES[k].icon} ${esc(C.label(k))}</option>`).join('');
     $('pvList').innerHTML = preview.map((x) => x.status === 'error'
       ? `<div class="prow"><span class="tag err">오류</span><div class="txt muted">${esc((x.file ? x.file + ' ' : '') + (x.line ? x.line + '번째 줄: ' : '') + x.error)}</div></div>`
@@ -670,6 +760,7 @@
     const r = saveCandidates([...items, ...preview.filter((x) => x.status === 'dup').map((x) => x.place)]);
     if (!r) return;
     r.errors.push(...preview.filter((x) => x.status === 'error'));
+    r.excluded = preview.excluded || 0;
     $('paste').value = '';
     $('importStart').hidden = false; $('importPreview').hidden = true;
     showReport(r, '가져오기 결과');
@@ -680,6 +771,7 @@
     const errs = report.errors.map((e) => `${e.file ? e.file + ' ' : ''}${e.line ? e.line + '번째 줄: ' : ''}${e.error}`);
     $('importReport').innerHTML = `<b>${esc(title)}</b><div>✅ 추가 ${report.added.length}곳</div>` +
       `<div>↩️ 이미 저장되어 건너뜀 ${report.duplicates.length}곳</div>${list(report.duplicates)}` +
+      (report.excluded ? `<div>🚫 제외 목록에 있어 건너뜀 ${report.excluded}곳</div>` : '') +
       `<div>⚠️ 오류로 건너뜀 ${report.errors.length}건</div>${list(errs)}` +
       (report.located && report.located.length ? `<div>📍 이미 저장된 ${report.located.length}곳에 지도 위치를 채웠어요</div>` : '') +
       (report.added.length ? '<div class="row" style="margin-top:8px"><button class="primary" data-goto-saved>즐겨찾기 보기</button></div>' : '');
@@ -741,6 +833,13 @@
     let el;
     if ((el = q('[data-close]'))) { el.closest('dialog').close(); return; }
     if (q('[data-open-import]')) { openImport(); return; }
+    if ((el = q('[data-unsave]'))) {
+      e.stopPropagation();
+      if (!unsave(el.dataset.unsave)) return;
+      const dlg = el.closest('dialog');
+      if (dlg && dlg.id === 'detailDlg') { const p = findPlace(el.dataset.unsave); if (p) $('detailBody').innerHTML = detailHtml(p); else dlg.close(); }
+      render(); return;
+    }
     if ((el = q('[data-save]'))) {
       e.stopPropagation(); saveFromPool(el.dataset.save);
       const dlg = el.closest('dialog');
@@ -753,9 +852,9 @@
       if (q('a[target]')) return; // 지도 앱 링크는 그대로 열기
       e.preventDefault(); openDetail(el.dataset.detail); return;
     }
-    if ((el = q('[data-hgroup]'))) { ui.homeGroup = el.dataset.hgroup; saveUi(); render(); return; }
+    if ((el = q('[data-hcat]'))) { ui.homeCat = el.dataset.hcat; saveUi(); render(); return; }
+    if ((el = q('[data-rcat]'))) { ui.favRecCat = el.dataset.rcat; saveUi(); render(); return; }
     if ((el = q('[data-env]'))) { ui.env = el.dataset.env; saveUi(); render(); return; }
-    if ((el = q('[data-fgroup]'))) { ui.favGroup = el.dataset.fgroup; ui.favCat = ''; ui.favRegion = ''; saveUi(); render(); return; }
     if ((el = q('[data-fsort], [data-psort], [data-esort]'))) {
       const key = el.dataset.fsort ? 'favOrder' : el.dataset.psort ? 'popSort' : 'evSort';
       const v = el.dataset.fsort || el.dataset.psort || el.dataset.esort;
@@ -771,21 +870,24 @@
     if ((el = q('[data-evwhen]'))) { ui.evWhen = el.dataset.evwhen; saveUi(); render(); return; }
     if ((el = q('[data-psub]'))) { ui.popSub = el.dataset.psub; saveUi(); render(); return; }
     if ((el = q('[data-mapapp]'))) { ui.mapApp = el.dataset.mapapp; saveUi(); render(); toast(`장소는 ${MAP_APPS[ui.mapApp]}로 열어요`); return; }
+    if (q('[data-exclude-shown]')) { excludeShown(); return; }
+    if ((el = q('[data-restore]'))) { restoreExcluded(el.dataset.restore); return; }
+    if ((el = q('[data-fsrc]'))) { ui.favSrc = el.dataset.fsrc; ui.favCat = ''; ui.favRegion = ''; saveUi(); render(); return; }
     if ((el = q('[data-fcat]'))) { ui.favCat = el.dataset.fcat; ui.favRegion = ''; saveUi(); render(); return; }
     if ((el = q('[data-freg]'))) { ui.favRegion = el.dataset.freg; saveUi(); render(); return; }
     if (q('[data-show-map]')) {
-      const title = [C.groupInfo(ui.favGroup).label, ui.favCat && C.label(ui.favCat), ui.favRegion || '전체 지역'].filter(Boolean).join(' · ');
+      const title = [ui.favSrc && SRC[ui.favSrc], ui.favCat ? C.label(ui.favCat) : '즐겨찾기 전체', ui.favRegion || '전체 지역'].filter(Boolean).join(' · ');
       showMap(favRows().rows, title); return;
     }
     if ((el = q('[data-list-update]'))) { updateList(el.dataset.listUpdate, el); return; }
     if ((el = q('[data-list-forget]'))) { forgetList(el.dataset.listForget); return; }
     if ((el = q('[data-del-group]'))) { removeGroup(el.dataset.delGroup); return; }
-    if ((el = q('[data-goto-group]'))) { ui.favGroup = el.dataset.gotoGroup; ui.favCat = ''; ui.favRegion = ''; saveUi(); location.hash = '#saved'; return; }
+    if ((el = q('[data-goto-cat]'))) { ui.favCat = el.dataset.gotoCat; ui.favRegion = ''; saveUi(); location.hash = '#saved'; return; }
     if (q('[data-goto-saved]')) { $('importDlg').close(); location.hash = '#saved'; render(); return; }
     if ((el = q('[data-pickfrom]'))) { ui.pickFrom = el.dataset.pickfrom; saveUi(); doPick(); return; }
     if ((el = q('[data-widen]'))) {
       const k = el.dataset.widen;
-      if (k === 'group') ui.homeGroup = ''; if (k === 'env') ui.env = ''; if (k === 'region') ui.region = 'all';
+      if (k === 'group') ui.homeCat = ''; if (k === 'favcat') ui.favRecCat = ''; if (k === 'env') ui.env = ''; if (k === 'region') ui.region = 'all';
       saveUi(); if (k === 'region') loadLive(); render();
       if ($('pickDlg').open) doPick();
     }
@@ -796,9 +898,9 @@
   document.addEventListener('change', (e) => {
     const t = e.target;
     if (t.id === 'regionPill') { ui.region = t.value; saveUi(); loadLive(); render(); }
-    if (t.dataset.hg) {
-      const id = t.dataset.hg;
-      ui.homeGroups = t.checked ? [...new Set([...ui.homeGroups, id])] : ui.homeGroups.filter((x) => x !== id);
+    if (t.dataset.hc) {
+      const k = t.dataset.hc;
+      ui.homeCats = t.checked ? [...new Set([...ui.homeCats, k])] : ui.homeCats.filter((x) => x !== k);
       saveUi();
     }
     if (t.dataset.pv !== undefined) updatePvButton();

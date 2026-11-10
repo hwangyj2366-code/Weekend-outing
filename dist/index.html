@@ -78,6 +78,7 @@ main{overflow-x:clip}
 .search{margin:10px 0 6px}
 .item .txt .pop{font-size:12px}
 .item .acts .heart-s{width:40px;padding:0;font-size:17px}
+.item .acts .heart-s.saved,.heart.saved{color:#d9534f}
 .item .acts .maplink{font-size:13px;padding:4px 10px;color:var(--green);font-weight:700}
 .item{padding-left:10px;gap:10px}
 .item .ico{width:40px;height:40px;font-size:21px}
@@ -95,6 +96,9 @@ main{overflow-x:clip}
 #evWhen small{font-size:12px;opacity:.75;margin-left:2px}
 .tag.on{background:#e3f0d5;color:#2f5d16}
 .sortline{margin-bottom:6px}
+.danger{color:#8a1f1f}
+.exlist{max-height:50vh;overflow:auto;margin-top:8px}
+#setExcluded summary{cursor:pointer;font-weight:700;color:var(--green);min-height:36px;display:flex;align-items:center}
 .grouprow{gap:6px;padding:2px 0}
 .grouprow label{flex:1;min-width:0}
 .addgroup{margin-top:10px;border-top:1px solid var(--soft);padding-top:8px}
@@ -173,18 +177,19 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
       <button id="pick" class="primary big">🎲 한 곳 골라줘</button>
     </section>
     <div class="filters">
-      <div class="chips" id="homeGroups" role="group" aria-label="분류"></div>
-      <div class="chips" id="homeEnv" role="group" aria-label="실내·야외"></div>
+      <div class="chips" id="homeEnv" role="group" aria-label="실내·야외 (인기·즐겨찾기 모두)"></div>
     </div>
 
     <section class="block" aria-labelledby="popTitle">
       <div class="sec-head"><h2 id="popTitle">🔥 요즘 인기 있는 곳</h2><button class="ghost small" id="popMore">더보기 ›</button></div>
+      <div class="chips sub" id="homePopCats" role="group" aria-label="인기 장소 분류"></div>
       <p class="status" id="popStatus" role="status"></p>
       <div class="scroller" id="popList"></div>
     </section>
 
     <section class="block" aria-labelledby="favTitle">
       <div class="sec-head"><h2 id="favTitle">⭐ 내 즐겨찾기에서 추천</h2><button class="ghost small" id="reshuffle">🔀 다시 섞기</button></div>
+      <div class="chips sub" id="homeFavCats" role="group" aria-label="즐겨찾기 분류"></div>
       <div id="favRecs"></div>
     </section>
   </div>
@@ -214,10 +219,11 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
   <!-- 즐겨찾기 -->
   <div id="page-saved" data-page="saved" hidden>
     <input id="search" class="search" type="search" placeholder="이름·지역·메모 검색" aria-label="즐겨찾기 검색">
-    <div class="chips" id="favGroups" role="group" aria-label="큰 분류"></div>
-    <div class="chips sub" id="favSub" role="group" aria-label="세부 분류"></div>
+    <div class="chips" id="favSrc" role="group" aria-label="어디서 가져왔는지"></div>
+    <div class="chips" id="favGroups" role="group" aria-label="분류"></div>
     <div class="chips sub" id="favRegion" role="group" aria-label="지역"></div>
     <div class="row between" id="favMap" style="margin-top:6px" hidden></div>
+    <div class="row" id="favBulk" style="justify-content:flex-end;margin-top:4px" hidden></div>
     <div id="favList"></div>
   </div>
 
@@ -235,7 +241,7 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
       <div id="setMapApp"></div>
     </div>
     <div class="box">
-      <h3>🏠 홈에서 추천할 분류</h3>
+      <h3>🏠 홈에 보일 분류</h3>
       <div id="setGroups"></div>
       <details class="addgroup" id="addGroupBox">
         <summary>＋ 분류 추가</summary>
@@ -255,6 +261,10 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
       <div id="setLists"></div>
     </div>
     <div class="box">
+      <h3>🚫 제외한 즐겨찾기</h3>
+      <div id="setExcluded"></div>
+    </div>
+    <div class="box">
       <h3>🔥 인기 장소 데이터</h3>
       <p class="muted" id="setLive"></p>
       <div class="row wrapline"><button id="setReload">다시 불러오기</button><button id="setPopInfo" class="ghost">인기 기준 보기</button></div>
@@ -268,11 +278,7 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
         <button id="wipe" class="ghost" style="color:#8a1f1f">모두 지우기</button>
       </div>
     </div>
-    <div class="box">
-      <h3>📱 휴대폰에 설치하기</h3>
-      <p class="muted"><b>안드로이드(크롬)</b> 메뉴 ⋮ → ‘홈 화면에 추가’ → 설치하면 앱처럼 열리고, 네이버·구글지도의 <b>공유</b> 메뉴에 ‘주말나들이’가 나타나 바로 보낼 수 있어요.<br><b>아이폰(사파리)</b> 공유 버튼 → ‘홈 화면에 추가’. 지도 앱에서는 공유 → 링크 복사 후 즐겨찾기 → 가져오기에 붙여 넣어 주세요.</p>
-    </div>
-    <p class="muted" style="text-align:center">관광 정보 출처: 한국관광공사 · 즐겨찾기는 이 기기 브라우저에만 저장돼요.<br>주말에 어디가지? v2.4</p>
+    <p class="muted" style="text-align:center">관광 정보 출처: 한국관광공사 · 즐겨찾기는 이 기기 브라우저에만 저장돼요.<br>주말에 어디가지? v2.5</p>
   </div>
 </main>
 

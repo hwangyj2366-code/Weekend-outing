@@ -7,22 +7,22 @@
   const SETTINGS_KEY = 'weekend-settings-v1';
   const LIVE_CACHE_KEY = 'weekend-live-cache-v1';
 
-  // 세부 분류 — 키 이름은 v1 데이터와 호환되도록 그대로 둡니다('맛집·카페' 등).
+  // 분류 — 화면에는 이 분류가 한 줄로 보여요. 키 이름은 v1 데이터와 호환되도록 그대로 둡니다('맛집·카페' 등).
+  // (예전 '여행지'(나들이·명소)·'키즈카페'는 없어졌고, 저장된 곳은 읽을 때 이름으로 다시 분류해요.)
   const TYPES = {
-    '박물관': { icon: '🏛️', bg: '#fae5c2', env: '실내', group: 'kids', label: '박물관·미술관' },
-    '과학관': { icon: '🔭', bg: '#dfe8fb', env: '실내', group: 'kids', label: '어린이과학관·과학관' },
-    '체험·놀이': { icon: '🎨', bg: '#f9dfe3', env: '실내', group: 'kids' },
-    '자연·공원': { icon: '🌳', bg: '#d7ebe0', env: '야외', group: 'kids' },
+    '박물관': { icon: '🏛️', bg: '#fae5c2', env: '실내', group: 'kids', label: '박물관·미술관·고궁', short: '박물관·고궁' },
+    '과학관': { icon: '🔭', bg: '#dfe8fb', env: '실내', group: 'kids', label: '어린이과학관·과학관', short: '과학관' },
+    '체험·놀이': { icon: '🎨', bg: '#f9dfe3', env: '실내', group: 'kids', label: '체험관·놀이시설', short: '체험·놀이' },
+    '자연·공원': { icon: '🌳', bg: '#d7ebe0', env: '야외', group: 'kids', label: '자연·공원·바다' },
+    '축제·행사': { icon: '🎪', bg: '#fbe2cf', env: '야외', group: 'kids', short: '축제' },
     '캠핑장': { icon: '⛺', bg: '#e5ebc8', env: '야외', group: 'camp' },
-    '여행지': { icon: '🧳', bg: '#dcebf2', env: '야외', group: 'kids', label: '나들이·명소' },
-    '축제·행사': { icon: '🎪', bg: '#fbe2cf', env: '야외', group: 'kids' },
-    '맛집·카페': { icon: '🍽️', bg: '#f3e3d3', env: '실내', group: 'food', label: '음식점·카페' },
-    '숙소·펜션': { icon: '🏡', bg: '#e8e2f3', env: '', group: 'stay', label: '숙소·펜션' },
-    '관광·쇼핑': { icon: '🛍️', bg: '#efe6f5', env: '', group: 'etc', label: '시장·거리·쇼핑' },
-    '골프·레저': { icon: '⛳', bg: '#dceee0', env: '야외', group: 'etc' },
+    '맛집·카페': { icon: '🍽️', bg: '#f3e3d3', env: '실내', group: 'food', label: '음식점·카페', short: '음식점' },
+    '숙소·펜션': { icon: '🏡', bg: '#e8e2f3', env: '', group: 'stay', label: '숙소·펜션', short: '숙소' },
+    '관광·쇼핑': { icon: '🛍️', bg: '#efe6f5', env: '', group: 'etc', label: '시장·거리·쇼핑', short: '쇼핑' },
+    '골프·레저': { icon: '⛳', bg: '#dceee0', env: '야외', group: 'etc', short: '레저' },
     '기타': { icon: '📍', bg: '#eee7dd', env: '', group: 'etc' },
   };
-  // 큰 분류. outing=true인 묶음만 '한 곳 골라줘'의 기본 후보가 돼요.
+  // 묶음(화면에는 안 보여요). outing=true인 묶음의 분류만 '나들이'로 인기·한 곳 골라줘의 기본 후보가 돼요.
   const GROUPS = [
     { id: 'kids', label: '아이랑 가볼만한 곳', short: '아이랑', icon: '🧒', outing: true },
     { id: 'camp', label: '캠핑장', short: '캠핑장', icon: '⛺', outing: true },
@@ -34,6 +34,14 @@
   const groupInfo = (id) => GROUPS.find((g) => g.id === id) || GROUPS[GROUPS.length - 1];
   const OUTING = Object.keys(TYPES).filter((k) => groupInfo(TYPES[k].group).outing);
   const label = (c) => (TYPES[c] && TYPES[c].label) || c;
+  const shortLabel = (c) => (TYPES[c] && (TYPES[c].short || TYPES[c].label)) || c;
+  // 화면에 보이는 분류 순서: 나들이 → 캠핑·음식점·숙소 → 설정에서 추가한 분류 → 쇼핑·레저·기타
+  function categories() {
+    const keys = Object.keys(TYPES);
+    const mine = keys.filter((k) => CUSTOM.some((c) => c.label === k));
+    const etc = keys.filter((k) => TYPES[k].group === 'etc');
+    return [...keys.filter((k) => !mine.includes(k) && !etc.includes(k)), ...mine, ...etc];
+  }
 
   const RULES = [
     ['골프·레저', /골프|컨트리\s?클럽|\bcc\b|스크린골프|볼링|당구|golf|country club/i],
@@ -48,7 +56,10 @@
     ['맛집·카페', /음식점|식당|맛집|카페|커피|디저트|베이커리|빵|국밥|냉면|갈비|고기|치킨|피자|분식|횟집|레스토랑|면옥|막국수|떡볶이|브런치|한식|중식|일식|양식|restaurant|cafe|coffee|bakery|bistro/i],
     // 아이 나들이와 거리가 먼 관광지는 '기타'의 시장·거리·쇼핑으로 (워터파크·찜질방 같은 체험은 위에서 먼저 걸러져요)
     ['관광·쇼핑', /시장|거리$|쇼핑|아울렛|백화점|면세|몰$|온천|사찰|성당|교회|와이너리|양조|포차|카지노/],
-    ['여행지', /관광|명소|여행|궁$|궁궐|성곽|한옥마을|전망대|타워|해변|해수욕장|섬$|폭포|케이블카|스카이워크|둘레길|호수|산성|정원|마을$|beach|island|tower|palace/i],
+    // 예전 '나들이·명소'를 나눠서: 고궁·성곽 → 박물관·고궁, 바다·호수·폭포 → 자연·공원, 전망대·케이블카 → 체험·놀이
+    ['박물관', /궁$|궁궐|고궁|성곽|산성|한옥마을|향교|서원|유적|palace/i],
+    ['자연·공원', /해변|해수욕장|섬$|폭포|둘레길|호수|정원|마을$|바다|해안|beach|island/i],
+    ['체험·놀이', /전망대|타워|케이블카|스카이워크|레일바이크|tower/i],
     ['체험·놀이', /여가/], // 네이버 업종 '여가'(키즈카페·놀이시설 등) — 이름으로 못 정할 때만
   ];
   // 사용자가 설정에서 추가한 분류: 큰 분류 하나와 같은 이름의 세부 분류 하나.
@@ -190,13 +201,8 @@
       const v2 = JSON.parse(read(STORAGE_KEY) || 'null');
       if (v2 && Array.isArray(v2.places)) {
         const places = v2.places.map(makePlace);
-        let changed = false;
-        // 분류 체계가 바뀌어 '여행지' 중 시장·거리 등은 '기타'로 옮겨요(직접 고른 분류는 그대로).
-        places.forEach((p) => {
-          if (p.manual || p.category !== '여행지') return;
-          const c = infer(p.name, p.note);
-          if (c === '관광·쇼핑') { p.category = c; p.env = TYPES[c].env; changed = true; }
-        });
+        // 없어진 분류(예전 '여행지'·'키즈카페')는 makePlace가 이름으로 다시 분류해요 → 바뀌었으면 다시 저장
+        const changed = places.some((p, i) => p.category !== v2.places[i].category);
         return { places, migrated: changed };
       }
     } catch { /* 손상된 v2는 무시하고 v1을 시도 */ }
@@ -437,7 +443,7 @@
 
   const api = {
     STORAGE_KEY, LEGACY_KEY, SETTINGS_KEY, LIVE_CACHE_KEY, TYPES, GROUPS, OUTING, REGIONS, SEED,
-    label, groupOf, groupInfo, infer, setCustom, regionFromAddress, inRegion, validUrl, canonicalUrl, mapSource, normName, isDup,
+    label, shortLabel, categories, groupOf, groupInfo, infer, setCustom, regionFromAddress, inRegion, validUrl, canonicalUrl, mapSource, normName, isDup,
     makePlace, loadPlaces, savePlaces, mergeImport, previewImport, exportBackup, parseBackup,
     parseCsv, fromCsv, fromGeoJson, fromShareText, filterPlaces, discoverPool, pickOne, shuffle, regionToken, distanceKm, formatKm, byDistance,
   };

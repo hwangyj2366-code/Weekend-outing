@@ -13,16 +13,20 @@ assert.equal(C.infer('국립어린이과학관'), '과학관');
 assert.equal(C.infer('난지캠핑장'), '캠핑장');
 assert.equal(C.infer('남서울CC'), '골프·레저');
 assert.equal(C.infer('키즈카페 점프'), '체험·놀이');
+assert.equal(C.infer('어린이 체험관'), '체험·놀이');
 assert.equal(C.infer('을지면옥'), '맛집·카페');
-assert.equal(C.infer('경복궁'), '여행지');
-assert.equal(C.infer('해운대해수욕장'), '여행지');
+assert.equal(C.infer('경복궁'), '박물관'); // 박물관·미술관·고궁
+assert.equal(C.infer('해운대해수욕장'), '자연·공원');
+assert.equal(C.infer('남산서울타워'), '체험·놀이');
 assert.equal(C.infer('서울빛초롱축제'), '축제·행사');
 assert.equal(C.infer('OO가든', '', '음식점>한식'), '맛집·카페');
 assert.equal(C.groupOf('과학관'), 'kids');
 assert.equal(C.groupOf('맛집·카페'), 'food');
 assert.equal(C.infer('가평 숲속 펜션'), '숙소·펜션');
 assert.equal(C.infer('서울어린이대공원'), '자연·공원');
-ok('카테고리 자동 분류 + 큰 분류(아이랑/캠핑장/여행지/음식점/숙소/기타), 네이버 업종명 활용');
+assert.ok(!C.TYPES['여행지'] && !C.TYPES['키즈카페']);
+assert.deepEqual(C.categories().slice(0, 8), ['박물관', '과학관', '체험·놀이', '자연·공원', '축제·행사', '캠핑장', '맛집·카페', '숙소·펜션']);
+ok('카테고리 자동 분류(분류 한 줄: 박물관·고궁/과학관/체험·놀이/자연·공원/축제/캠핑장/음식점/숙소/…), 네이버 업종명 활용');
 
 // 2. Takeout CSV: 추가 / 중복 / 오류 / 경고
 const csv = C.fromCsv(fx('want-to-go.csv'), 'want-to-go');
@@ -96,7 +100,7 @@ assert.ok(!C.filterPlaces(all, { ...base, outingOnly: true }).some((p) => ['남�
 assert.ok(C.filterPlaces(all, base).some((p) => p.name === '남서울CC'));
 assert.deepEqual(C.filterPlaces(all, { ...base, group: 'food' }).map((p) => p.name), ['을지면옥']);
 assert.deepEqual(C.filterPlaces(all, { ...base, group: 'camp' }).map((p) => p.name), ['난지캠핑장']);
-assert.deepEqual(C.filterPlaces(C.SEED, { region: 'sg', env: '실내', category: '' }).map((p) => p.category).filter((c) => !['과학관', '박물관', '체험·놀이'].includes(c)), []);
+assert.deepEqual(C.filterPlaces(C.SEED, { region: 'sg', env: '실내', category: '' }).map((p) => p.category).filter((c) => !['과학관', '박물관', '체험·놀이', '키즈카페'].includes(c)), []);
 assert.equal(C.filterPlaces(C.SEED, { region: 'sg', category: '캠핑장' }).length, 2);
 assert.equal(C.filterPlaces(C.SEED, { region: 'jeju' }).length, 0);
 assert.equal(C.filterPlaces(C.SEED, { region: 'sg', category: '캠핑장', env: '실내' }).length, 0);
@@ -130,22 +134,21 @@ assert.equal(C.infer('이지캠프 양주'), '캠핑장');
 assert.equal(C.infer('아쿠아플라넷 일산'), '체험·놀이');
 ok('네이버 리스트 링크(리다이렉트 3단계)에서 id 찾기, 장소 하나 링크는 구분');
 
-// 12. 분류 개편: 여행지는 '아이랑'으로, 시장·거리는 기타로 / 다시 가져오면 위치만 채움
-assert.equal(C.groupOf('여행지'), 'kids');
-assert.ok(!C.GROUPS.some((g) => g.id === 'trip'));
+// 12. 분류 개편: 없어진 분류(여행지·키즈카페)는 읽을 때 이름으로 다시 분류 / 다시 가져오면 위치만 채움
 assert.equal(C.infer('자갈치신동아시장'), '관광·쇼핑');
 assert.equal(C.groupOf('관광·쇼핑'), 'etc');
 const s2 = mem();
-C.savePlaces(s2, [C.makePlace({ name: '부산BIFF거리', category: '여행지' }), C.makePlace({ name: '먹자골목 거리', category: '여행지', manual: true }), C.makePlace({ name: '화개정원', category: '여행지' })]);
+C.savePlaces(s2, [{ name: '부산BIFF거리', category: '여행지' }, { name: '화개정원', category: '여행지' }, { name: '점프 키즈카페', category: '키즈카페' }, { name: '먹자골목 거리', category: '맛집·카페', manual: true }]);
 const L2 = C.loadPlaces(s2);
-assert.deepEqual(L2.places.map((p) => p.category), ['관광·쇼핑', '여행지', '여행지'], '직접 고른 분류는 유지');
+assert.deepEqual(L2.places.map((p) => p.category), ['관광·쇼핑', '자연·공원', '체험·놀이', '맛집·카페'], '직접 고른 분류는 유지');
+assert.equal(L2.migrated, true);
 const noPos = [C.makePlace({ name: '레고랜드 코리아', url: 'https://map.naver.com/p/entry/place/1798639977' })];
 const filled = C.mergeImport(noPos, [{ name: '레고랜드 코리아', url: 'https://map.naver.com/p/entry/place/1798639977', lat: 37.88, lng: 127.69 }, { name: '바다 위', lat: 10, lng: 10 }]);
 assert.equal(filled.report.added.length, 1);
 assert.deepEqual(filled.report.located, ['레고랜드 코리아']);
 assert.equal(filled.next[0].lat, 37.88);
 assert.equal(filled.next[1].lat, null, '한국 밖 좌표는 버림');
-ok('분류 개편(여행지→아이랑, 시장·거리→기타, 직접 분류 유지), 다시 가져오면 중복 없이 지도 위치만 채움');
+ok('분류 개편(여행지·키즈카페 → 이름으로 다시 분류, 직접 분류 유지), 다시 가져오면 중복 없이 지도 위치만 채움');
 
 // 13. 현재 위치 기준 거리·가까운 순
 const cityHall = { lat: 37.5665, lng: 126.978 };
