@@ -43,7 +43,7 @@ h1,h2,h3{letter-spacing:-.04em;margin:0}
 .filters{display:grid;gap:8px;margin:14px 0 4px}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
-.chips button{min-height:40px;padding:6px 14px;flex:none}
+.chips button{min-height:34px;padding:3px 11px;font-size:14px;flex:none}
 section.block{margin-top:26px}
 .sec-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}
 .sec-head h2{font-size:22px}
@@ -94,8 +94,17 @@ main{overflow-x:clip}
 .evrow .when .tag{display:inline;margin-left:4px;font-weight:600}
 #evWhen small{font-size:12px;opacity:.75;margin-left:2px}
 .tag.on{background:#e3f0d5;color:#2f5d16}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:30px;overflow:hidden}
-.seg button{border:0;border-radius:0;min-height:38px;padding:4px 14px}
+.sortline{margin-bottom:6px}
+.grouprow{gap:6px;padding:2px 0}
+.grouprow label{flex:1;min-width:0}
+.addgroup{margin-top:10px;border-top:1px solid var(--soft);padding-top:8px}
+.addgroup summary{cursor:pointer;font-weight:700;color:var(--green);min-height:36px;display:flex;align-items:center}
+.sortline b{font-size:15px}
+.barchips{padding:0}
+.barchips button{white-space:nowrap}
+.barchips small{opacity:.7;font-size:12px}
+.seg{flex:none;display:inline-flex;border:1px solid var(--line);border-radius:30px;overflow:hidden}
+.seg button{border:0;border-radius:0;min-height:34px;padding:3px 13px;font-size:14px}
 .seg button+button{border-left:1px solid var(--line)}
 /* 탭바 */
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#fffdf5f5;backdrop-filter:blur(8px);border-top:1px solid var(--soft);padding-bottom:env(safe-area-inset-bottom)}
@@ -139,7 +148,7 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .toast{position:fixed;left:50%;bottom:calc(var(--tab) + 18px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--green);color:#fff;border-radius:20px;padding:10px 18px;z-index:50;font-size:15px;max-width:90vw;box-shadow:0 6px 20px #18342655}
-.chips.sub button{min-height:36px;padding:4px 12px;font-size:14px}
+.chips.sub button{min-height:32px;padding:3px 10px;font-size:13px}
 .mapdlg{height:92vh;display:none;flex-direction:column}
 .mapdlg[open]{display:flex}
 #mapBox{flex:1;min-height:300px}
@@ -184,12 +193,11 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
   <div id="page-popular" data-page="popular" hidden>
     <a class="evbanner" href="#events" id="evBanner"><span class="big">🎪</span><span><b>행사 모아보기</b><span class="muted" id="evBannerSub">이번 주말 · 이번 달 · 다음 달 축제와 행사</span></span><span class="go">›</span></a>
     <div class="filters">
-      <div class="chips" id="popArea" role="group" aria-label="지역"></div>
       <div class="chips" id="popGroups" role="group" aria-label="분류"></div>
       <div class="chips" id="popEnv" role="group" aria-label="실내·야외"></div>
     </div>
     <p class="status" id="popStatus2" role="status"></p>
-    <div class="row between" id="popBar" style="margin:6px 0 8px"></div>
+    <div id="popBar" style="margin:6px 0 8px"></div>
     <div id="popAll"></div>
     <p style="text-align:center;margin-top:14px"><button class="ghost small" id="popInfo">ⓘ ‘인기’는 이렇게 골라요</button></p>
   </div>
@@ -198,7 +206,7 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
   <div id="page-events" data-page="events" hidden>
     <div class="chips" id="evWhen" role="group" aria-label="기간"></div>
     <p class="status" id="evStatus" role="status"></p>
-    <div class="row between" id="evBar" style="margin:6px 0 8px"></div>
+    <div id="evBar" style="margin:6px 0 8px"></div>
     <div id="evList"></div>
     <p class="muted" style="text-align:center;margin-top:14px;font-size:13px">행사 일정·장소는 바뀔 수 있어요. 가기 전에 행사 사이트에서 꼭 확인해 주세요.</p>
   </div>
@@ -229,6 +237,18 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
     <div class="box">
       <h3>🏠 홈에서 추천할 분류</h3>
       <div id="setGroups"></div>
+      <details class="addgroup" id="addGroupBox">
+        <summary>＋ 분류 추가</summary>
+        <div class="row" style="gap:6px;margin-top:8px">
+          <select id="ngIcon" aria-label="아이콘" style="width:auto">
+            <option>📌</option><option>☕</option><option>🧸</option><option>🛝</option><option>🏊</option><option>🎡</option><option>🐾</option><option>⚽</option><option>📚</option><option>🍦</option><option>🌊</option><option>⛰️</option><option>🎵</option><option>🚗</option>
+          </select>
+          <input id="ngName" maxlength="12" placeholder="분류 이름 (예: 키즈카페)" aria-label="분류 이름">
+        </div>
+        <input id="ngWords" style="margin-top:6px" placeholder="자동 분류 단어 (쉼표로, 선택)" aria-label="자동 분류 단어">
+        <p class="muted" style="font-size:13px;margin:6px 0">예: 키즈카페, 플레이 → 이름에 이 단어가 들어간 즐겨찾기를 새 분류로 옮기고, 앞으로 가져오는 곳도 자동으로 넣어요.</p>
+        <button class="primary" id="ngSave">추가</button>
+      </details>
     </div>
     <div class="box">
       <h3>🔗 가져온 지도 리스트</h3>
@@ -252,7 +272,7 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
       <h3>📱 휴대폰에 설치하기</h3>
       <p class="muted"><b>안드로이드(크롬)</b> 메뉴 ⋮ → ‘홈 화면에 추가’ → 설치하면 앱처럼 열리고, 네이버·구글지도의 <b>공유</b> 메뉴에 ‘주말나들이’가 나타나 바로 보낼 수 있어요.<br><b>아이폰(사파리)</b> 공유 버튼 → ‘홈 화면에 추가’. 지도 앱에서는 공유 → 링크 복사 후 즐겨찾기 → 가져오기에 붙여 넣어 주세요.</p>
     </div>
-    <p class="muted" style="text-align:center">관광 정보 출처: 한국관광공사 · 즐겨찾기는 이 기기 브라우저에만 저장돼요.<br>주말에 어디가지? v2.3</p>
+    <p class="muted" style="text-align:center">관광 정보 출처: 한국관광공사 · 즐겨찾기는 이 기기 브라우저에만 저장돼요.<br>주말에 어디가지? v2.4</p>
   </div>
 </main>
 

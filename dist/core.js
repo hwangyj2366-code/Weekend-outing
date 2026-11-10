@@ -51,8 +51,28 @@
     ['여행지', /관광|명소|여행|궁$|궁궐|성곽|한옥마을|전망대|타워|해변|해수욕장|섬$|폭포|케이블카|스카이워크|둘레길|호수|산성|정원|마을$|beach|island|tower|palace/i],
     ['체험·놀이', /여가/], // 네이버 업종 '여가'(키즈카페·놀이시설 등) — 이름으로 못 정할 때만
   ];
+  // 사용자가 설정에서 추가한 분류: 큰 분류 하나와 같은 이름의 세부 분류 하나.
+  // words(이름에 들어간 단어)가 있으면 기본 규칙보다 먼저 그 분류로 넣어요. 저장된 장소를 읽기 전에 등록해야 해요.
+  const CUSTOM = [];
+  function setCustom(list) {
+    for (const c of CUSTOM) {
+      delete TYPES[c.label];
+      const i = GROUPS.findIndex((g) => g.id === c.id);
+      if (i >= 0) GROUPS.splice(i, 1);
+    }
+    CUSTOM.length = 0;
+    for (const c of Array.isArray(list) ? list : []) {
+      const name = String((c && c.label) || '').trim();
+      if (!c || !c.id || !name || TYPES[name] || GROUPS.some((g) => g.id === c.id)) continue;
+      const icon = c.icon || '📌';
+      TYPES[name] = { icon, bg: '#e6ecf6', env: '', group: c.id };
+      GROUPS.splice(GROUPS.length - 1, 0, { id: c.id, label: name, short: name, icon, outing: false, custom: true }); // '기타'는 맨 뒤에 그대로
+      CUSTOM.push({ id: c.id, label: name, words: (c.words || []).map((w) => String(w).trim()).filter(Boolean) });
+    }
+  }
   function infer(...texts) {
     const s = texts.filter(Boolean).join(' ');
+    for (const c of CUSTOM) if (c.words.some((w) => s.includes(w))) return c.label;
     for (const [cat, re] of RULES) if (re.test(s)) return cat;
     return '기타';
   }
@@ -417,7 +437,7 @@
 
   const api = {
     STORAGE_KEY, LEGACY_KEY, SETTINGS_KEY, LIVE_CACHE_KEY, TYPES, GROUPS, OUTING, REGIONS, SEED,
-    label, groupOf, groupInfo, infer, regionFromAddress, inRegion, validUrl, canonicalUrl, mapSource, normName, isDup,
+    label, groupOf, groupInfo, infer, setCustom, regionFromAddress, inRegion, validUrl, canonicalUrl, mapSource, normName, isDup,
     makePlace, loadPlaces, savePlaces, mergeImport, previewImport, exportBackup, parseBackup,
     parseCsv, fromCsv, fromGeoJson, fromShareText, filterPlaces, discoverPool, pickOne, shuffle, regionToken, distanceKm, formatKm, byDistance,
   };
