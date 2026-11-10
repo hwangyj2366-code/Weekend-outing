@@ -122,6 +122,8 @@ main{overflow-x:clip}
 dialog{border:0;padding:0;background:var(--paper);color:inherit;width:min(100vw,640px);max-width:100vw;max-height:92vh;border-radius:24px 24px 0 0;margin:auto auto 0;box-shadow:0 -10px 40px #18342640}
 @media(min-width:700px){dialog{border-radius:24px;margin:auto}}
 dialog::backdrop{background:#18342688}
+#askMsg{white-space:pre-line;font-size:16px;line-height:1.55;margin:4px 0 0}
+dialog.ask .sheet-body{padding:20px 18px calc(18px + env(safe-area-inset-bottom))}
 .sheet-head{position:sticky;top:0;z-index:2;background:var(--paper);display:flex;justify-content:space-between;align-items:center;gap:8px;padding:16px 18px 10px;border-bottom:1px solid var(--soft)}
 .sheet-head h2{font-size:21px}
 .sheet-body{padding:14px 18px 22px}
@@ -332,6 +334,14 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
 </dialog>
 
 <!-- 장소 상세 -->
+<!-- 확인 창 (기본 confirm 대신) -->
+<dialog id="askDlg" class="ask" aria-labelledby="askMsg">
+  <div class="sheet-body">
+    <p id="askMsg"></p>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:14px"><button id="askNo" class="ghost">취소</button><button id="askOk" class="primary">확인</button></div>
+  </div>
+</dialog>
+
 <dialog id="detailDlg" aria-labelledby="detailName">
   <div class="sheet-head"><span class="muted" id="detailKind"></span><button data-close aria-label="닫기">✕</button></div>
   <div class="sheet-body detail" id="detailBody"></div>

@@ -49,6 +49,19 @@
     }
   }
   function saveUi() { try { localStorage.setItem(C.SETTINGS_KEY, JSON.stringify(ui)); } catch { /* 선택 */ } }
+  // 확인 창: 휴대폰의 앱 안 브라우저 등은 기본 confirm 창을 막아 버려서, 앱 안의 창으로 물어봐요.
+  function ask(msg, ok = '확인') {
+    return new Promise((resolve) => {
+      const dlg = $('askDlg');
+      const done = (v) => { dlg.removeEventListener('close', onClose); $('askOk').onclick = $('askNo').onclick = null; if (dlg.open) dlg.close(); resolve(v); };
+      const onClose = () => done(false);
+      $('askMsg').textContent = msg; $('askOk').textContent = ok;
+      $('askOk').onclick = () => done(true);
+      $('askNo').onclick = () => done(false);
+      dlg.addEventListener('close', onClose);
+      dlg.showModal();
+    });
+  }
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.hidden = false;
     clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.hidden = true; }, 2600);
@@ -146,30 +159,30 @@
     if (add.length) writeExcluded([...readExcluded().filter((x) => !add.some((a) => a.keys.some((k) => x.keys.includes(k)))), ...add]);
     return true;
   }
-  function unsave(id) {
+  async function unsave(id) {
     const p = findPlace(id);
     if (!p) return false;
     const mine = saved.filter((x) => x.id === id || C.isDup(x, p));
     if (!mine.length) return false;
     const from = srcOf(mine[0]);
-    if (from !== 'app' && !confirm(`‘${mine[0].name}’을(를) 즐겨찾기에서 뺄까요?\n${SRC[from]}에서 가져온 곳이라 제외 목록에 넣어요. 리스트를 다시 [업데이트]해도 들어오지 않고, 설정 → 제외한 즐겨찾기에서 되돌릴 수 있어요.`)) return false;
+    if (from !== 'app' && !await ask(`‘${mine[0].name}’을(를) 즐겨찾기에서 뺄까요?\n${SRC[from]}에서 가져온 곳이라 제외 목록에 넣어요. 리스트를 다시 [업데이트]해도 들어오지 않고, 설정 → 제외한 즐겨찾기에서 되돌릴 수 있어요.`, '빼기')) return false;
     if (!removePlaces(mine)) return false;
     toast(`‘${mine[0].name}’을(를) 즐겨찾기에서 뺐어요`);
     return true;
   }
   // 지금 보이는 목록(출처·분류·지역·검색) 전체 제외
-  function excludeShown() {
+  async function excludeShown() {
     const { rows } = favRows();
     if (!rows.length) return;
     const what = [ui.favSrc && SRC[ui.favSrc], ui.favCat && C.label(ui.favCat), ui.favRegion].filter(Boolean).join(' · ') || '전체';
-    if (!confirm(`‘${what}’ ${rows.length}곳을 모두 즐겨찾기에서 뺄까요?\n가져온 곳은 제외 목록에 넣어서, 리스트를 다시 [업데이트]해도 들어오지 않아요. 설정 → 제외한 즐겨찾기에서 되돌릴 수 있어요.`)) return;
+    if (!await ask(`‘${what}’ ${rows.length}곳을 모두 즐겨찾기에서 뺄까요?\n가져온 곳은 제외 목록에 넣어서, 리스트를 다시 [업데이트]해도 들어오지 않아요. 설정 → 제외한 즐겨찾기에서 되돌릴 수 있어요.`, `${rows.length}곳 빼기`)) return;
     if (removePlaces(rows)) { ui.favCat = ''; ui.favRegion = ''; saveUi(); render(); toast(`${rows.length}곳을 뺐어요`); }
   }
-  function restoreExcluded(i) {
+  async function restoreExcluded(i) {
     const all = readExcluded();
     const list = i === 'all' ? all : [all[Number(i)]].filter(Boolean);
     if (!list.length) return;
-    if (i === 'all' && !confirm(`제외한 ${list.length}곳을 모두 즐겨찾기로 되돌릴까요?`)) return;
+    if (i === 'all' && !await ask(`제외한 ${list.length}곳을 모두 즐겨찾기로 되돌릴까요?`, '되돌리기')) return;
     writeExcluded(all.filter((x) => !list.includes(x)));
     const r = saveCandidates(list.map((x) => x.place));
     render();
@@ -598,11 +611,11 @@
     render();
     toast(moved ? `‘${label}’ 분류를 만들고 즐겨찾기 ${moved}곳을 옮겼어요` : `‘${label}’ 분류를 만들었어요. 장소 자세히의 ✏️ 분류·편집에서 옮길 수 있어요`);
   };
-  function removeGroup(id) {
+  async function removeGroup(id) {
     const g = ui.customGroups.find((x) => x.id === id);
     if (!g) return;
     const n = saved.filter((p) => p.category === g.label).length;
-    if (!confirm(`‘${g.label}’ 분류를 지울까요?${n ? `\n이 분류의 즐겨찾기 ${n}곳은 지우지 않고 원래 규칙대로 다시 분류해요.` : ''}`)) return;
+    if (!await ask(`‘${g.label}’ 분류를 지울까요?${n ? `\n이 분류의 즐겨찾기 ${n}곳은 지우지 않고 원래 규칙대로 다시 분류해요.` : ''}`, '지우기')) return;
     ui.customGroups = ui.customGroups.filter((x) => x.id !== id);
     ui.homeCats = ui.homeCats.filter((x) => x !== g.label);
     if (ui.homeCat === g.label) ui.homeCat = '';
@@ -635,9 +648,9 @@
     });
     if (persist(next)) { $('editDlg').close(); render(); toast('저장했어요'); }
   };
-  $('eDelete').onclick = () => {
+  $('eDelete').onclick = async () => {
     const p = saved.find((x) => x.id === editingId);
-    if (!p || !confirm(`‘${p.name}’을(를) 즐겨찾기에서 삭제할까요?`)) return;
+    if (!p || !await ask(`‘${p.name}’을(를) 즐겨찾기에서 삭제할까요?`, '삭제')) return;
     if (persist(saved.filter((x) => x.id !== editingId))) { $('editDlg').close(); render(); toast('삭제했어요'); }
   };
 
@@ -705,8 +718,8 @@
     const rest = readLists().filter((x) => x.url !== url && !(x.provider === list.provider && x.name === list.listName));
     writeLists([...rest, { url, provider: list.provider, name: list.listName, count: list.places.length, updatedAt: new Date().toISOString() }]);
   }
-  function forgetList(url) {
-    if (!confirm('이 리스트 링크를 잊을까요? 이미 저장한 장소는 그대로 남아요.')) return;
+  async function forgetList(url) {
+    if (!await ask('이 리스트 링크를 잊을까요? 이미 저장한 장소는 그대로 남아요.', '잊기')) return;
     writeLists(readLists().filter((x) => x.url !== url)); render();
   }
   async function updateList(url, btn) {
@@ -821,8 +834,8 @@
     if (files.length) { openImport(); showPreview(await readFiles(files), '백업'); }
     e.target.value = '';
   };
-  $('wipe').onclick = () => {
-    if (!saved.length || !confirm(`즐겨찾기 ${saved.length}곳을 모두 지울까요? 되돌릴 수 없어요. (먼저 백업 파일을 저장해 두는 걸 권해요)`)) return;
+  $('wipe').onclick = async () => {
+    if (!saved.length || !await ask(`즐겨찾기 ${saved.length}곳을 모두 지울까요? 되돌릴 수 없어요. (먼저 백업 파일을 저장해 두는 걸 권해요)`, '모두 지우기')) return;
     if (persist([])) { render(); toast('모두 지웠어요'); }
   };
 
@@ -835,10 +848,14 @@
     if (q('[data-open-import]')) { openImport(); return; }
     if ((el = q('[data-unsave]'))) {
       e.stopPropagation();
-      if (!unsave(el.dataset.unsave)) return;
+      const id = el.dataset.unsave;
       const dlg = el.closest('dialog');
-      if (dlg && dlg.id === 'detailDlg') { const p = findPlace(el.dataset.unsave); if (p) $('detailBody').innerHTML = detailHtml(p); else dlg.close(); }
-      render(); return;
+      unsave(id).then((ok) => {
+        if (!ok) return;
+        if (dlg && dlg.id === 'detailDlg' && dlg.open) { const p = findPlace(id); if (p) $('detailBody').innerHTML = detailHtml(p); else dlg.close(); }
+        render();
+      });
+      return;
     }
     if ((el = q('[data-save]'))) {
       e.stopPropagation(); saveFromPool(el.dataset.save);
