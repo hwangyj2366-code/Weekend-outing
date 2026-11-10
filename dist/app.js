@@ -17,7 +17,7 @@
   let saved = loaded.places;
   if (loaded.migrated) persist(saved, true);
 
-  const defaults = { region: 'sg', homeGroup: '', env: '', favGroup: 'kids', favCat: '', favRegion: '', favOrder: 'near', popSort: 'score', popArea: 'all', popSub: '', mapApp: 'naver', pickFrom: 'all', homeGroups: ['kids', 'camp', 'food'] };
+  const defaults = { region: 'sg', homeGroup: '', env: '', favGroup: 'kids', favCat: '', favRegion: '', favOrder: 'near', popSort: 'score', popArea: 'all', popSub: '', evWhen: 'weekend', evSub: '', evSort: 'date', mapApp: 'naver', pickFrom: 'all', homeGroups: ['kids', 'camp', 'food'] };
   let ui = { ...defaults };
   try {
     const s = JSON.parse(localStorage.getItem(C.SETTINGS_KEY) || '{}');
@@ -62,13 +62,13 @@
   // 이번 주말 행사: 공식 사이트(관광공사 정보에 있을 때) 또는 네이버 검색으로 연결
   const isEvent = (p) => !!(p.popularity && p.popularity.kind === 'festival');
   const eventHref = (p) => (p.homepage ? { href: p.homepage, label: '행사 사이트' } : { href: `https://search.naver.com/search.naver?query=${encodeURIComponent(p.name)}`, label: '행사 정보' });
-  const popLine = (p) => (isEvent(p) ? `<a class="pop evlink" target="_blank" rel="noopener noreferrer" href="${esc(eventHref(p).href)}">🎪 이번 주말 · ${eventHref(p).label} ›</a>`
+  const popLine = (p) => (isEvent(p) ? `<a class="pop evlink" target="_blank" rel="noopener noreferrer" href="${esc(eventHref(p).href)}">🎪 ${esc(p.evLabel || '이번 주말')} · ${eventHref(p).label} ›</a>`
     : p.popularity ? `<span class="pop">🔥 ${esc(p.popularity.label)}</span>` : '');
   // 정렬 두 가지를 나란히 보여주는 버튼 묶음
   const seg = (attr, cur, opts) => `<span class="seg">${opts.map(([v, t]) => `<button class="small ${cur === v ? 'active' : ''}" ${attr}="${v}">${t}</button>`).join('')}</span>`;
   function art(p, extra = '') {
     const t = T(p);
-    const badge = p.origin === 'seed' ? '기본 추천' : p.popularity ? (p.popularity.kind === 'festival' ? '이번 주말' : '인기') : '';
+    const badge = p.origin === 'seed' ? '기본 추천' : p.popularity ? (p.popularity.kind === 'festival' ? p.evBadge || '이번 주말' : '인기') : '';
     return `<div class="art" style="background:${t.bg}">${t.icon}${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" onerror="this.remove()">` : ''}` +
       (badge ? `<span class="badge">${esc(badge)}</span>` : '') + extra + '</div>';
   }
@@ -114,9 +114,9 @@
       popLine(p) + '</div></article>';
   }
   function detailHtml(p) {
-    const pop = p.popularity ? `<div class="popbox">🔥 <b>${esc(p.popularity.label)}</b><div class="muted">${esc(p.popularity.source)} · 기준 ${esc(p.popularity.basis)}</div></div>` : '';
+    const pop = p.popularity ? `<div class="popbox">${isEvent(p) ? '🎪' : '🔥'} <b>${esc(p.popularity.label)}</b><div class="muted">${esc(p.popularity.source)} · 기준 ${esc(p.popularity.basis)}</div></div>` : '';
     const h = p.hours || {};
-    const rows = [['이용시간', h.usetime], ['쉬는 날', h.restdate], ['요금', h.usefee], ['유모차', h.babycarriage], ['주차', h.parking], ['예약', h.reservation], ['문의', h.infocenter]].filter(([, v]) => v);
+    const rows = [['기간', h.period], ['장소', h.addr], ['이용시간', h.usetime], ['쉬는 날', h.restdate], ['요금', h.usefee], ['유모차', h.babycarriage], ['주차', h.parking], ['예약', h.reservation], ['문의', h.infocenter]].filter(([, v]) => v);
     const hours = rows.length ? `<dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl><p class="muted">출처: ${esc(h.source || '')}${h.updated ? ` · 정보 수정일 ${esc(h.updated)}` : ''}</p>` : '';
     const note = p.note || (p.origin === 'seed' ? '' : '');
     const savedHere = isSaved(p);
@@ -136,21 +136,22 @@
     return { group: ui.homeGroup, env: ui.env, region: ui.region, ...extra };
   }
   function findPlace(id) {
-    return saved.find((p) => p.id === id) || live.places.find((p) => p.id === id) || C.SEED.find((p) => p.id === id);
+    return saved.find((p) => p.id === id) || live.places.find((p) => p.id === id) || evData.list.find((p) => p.id === id) ||
+      Object.values(nation.byArea).flat().find((p) => p.id === id) || C.SEED.find((p) => p.id === id);
   }
 
   // ---------- 화면: 공통 ----------
-  function route() { const r = location.hash.replace('#', ''); return ['home', 'popular', 'saved', 'settings'].includes(r) ? r : 'home'; }
+  function route() { const r = location.hash.replace('#', ''); return ['home', 'popular', 'events', 'saved', 'settings'].includes(r) ? r : 'home'; }
   function render() {
     const r = route();
     document.querySelectorAll('[data-page]').forEach((el) => { el.hidden = el.dataset.page !== r; });
-    document.querySelectorAll('[data-tab]').forEach((a) => a.setAttribute('aria-current', a.dataset.tab === r ? 'page' : 'false'));
+    document.querySelectorAll('[data-tab]').forEach((a) => a.setAttribute('aria-current', a.dataset.tab === (r === 'events' ? 'popular' : r) ? 'page' : 'false'));
     $('tabCount').hidden = !saved.length; $('tabCount').textContent = saved.length;
-    $('title').textContent = r === 'home' ? '🌿 주말에 어디가지?' : r === 'popular' ? '🔥 요즘 인기' : r === 'saved' ? `⭐ 즐겨찾기 ${saved.length}곳` : '⚙️ 설정';
+    $('title').textContent = r === 'home' ? '🌿 주말에 어디가지?' : r === 'popular' ? '🔥 요즘 인기' : r === 'events' ? '🎪 행사 모아보기' : r === 'saved' ? `⭐ 즐겨찾기 ${saved.length}곳` : '⚙️ 설정';
     $('topAction').innerHTML = r === 'home'
       ? `<select id="regionPill" class="pill" aria-label="지역">${C.REGIONS.map((x) => `<option value="${x.id}" ${x.id === ui.region ? 'selected' : ''}>📍 ${esc(x.label)}</option>`).join('')}</select>`
-      : r === 'saved' ? '<button class="primary" data-open-import>＋ 가져오기</button>' : '';
-    if (r === 'home') renderHome(); else if (r === 'popular') renderPopular(); else if (r === 'saved') renderSaved(); else renderSettings();
+      : r === 'saved' ? '<button class="primary" data-open-import>＋ 가져오기</button>' : r === 'events' ? '<a class="link" href="#popular">‹ 인기</a>' : '';
+    if (r === 'home') renderHome(); else if (r === 'popular') renderPopular(); else if (r === 'events') renderEvents(); else if (r === 'saved') renderSaved(); else renderSettings();
   }
   const groupChips = () => `<button data-hgroup="" class="${ui.homeGroup ? '' : 'active'}">전체</button>` +
     C.GROUPS.filter((g) => g.outing || ui.homeGroups.includes(g.id))
@@ -178,7 +179,8 @@
       .sort((x, y) => ((y.popularity && y.popularity.score) || 0) - ((x.popularity && x.popularity.score) || 0));
   }
   function renderPopular() {
-    loadNation();
+    loadNation(); loadEvents();
+    if (evData.status === 'ok') $('evBannerSub').textContent = `전국 축제·행사 — ${evPeriods().map((x) => `${x.label} ${evRows(x).length}`).join(' · ')}`;
     $('popArea').innerHTML = AREA_TABS.map(([v, t]) => `<button data-parea="${v}" class="${ui.popArea === v ? 'active' : ''}">📍 ${t}</button>`).join('');
     $('popGroups').innerHTML = groupChips();
     $('popEnv').innerHTML = envChips();
@@ -203,6 +205,74 @@
       const list = rows.filter((p) => subKey(p) === k);
       return `<div class="group-head"><h3>📍 ${esc(subLabel(k))} <span class="muted">${list.length}곳</span></h3></div><div class="list">${list.map(itemRow).join('')}</div>`;
     }).join('');
+  }
+
+  // ---------- 화면: 행사 모아보기 ----------
+  // 한국관광공사 행사정보(매일 아침 업데이트)를 이번 주말 / 이번 달 / 다음 달로 나눠 보여줘요.
+  const ymdOf = (x) => `${x.getFullYear()}${String(x.getMonth() + 1).padStart(2, '0')}${String(x.getDate()).padStart(2, '0')}`;
+  const dateOf = (s) => new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8));
+  const md = (s) => { const d = dateOf(s); return `${d.getMonth() + 1}.${d.getDate()}(${'일월화수목금토'[d.getDay()]})`; };
+  const evDates = (e) => (e.start === e.end ? md(e.start) : `${md(e.start)} ~ ${md(e.end)}`);
+  function evPeriods() {
+    const now = new Date(); const d = now.getDay(); const today = ymdOf(now);
+    const sat = new Date(now); sat.setDate(now.getDate() + (d === 0 ? -1 : 6 - d));
+    const sun = new Date(sat); sun.setDate(sat.getDate() + 1);
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const later = (a, b) => (a > b ? a : b);
+    return [
+      { id: 'weekend', label: '이번 주말', sub: `${sat.getMonth() + 1}/${sat.getDate()}–${sun.getMonth() + 1}/${sun.getDate()}`, from: later(today, ymdOf(sat)), to: ymdOf(sun), before: '주말 전부터 열리고 있어요', within: '이번 주말에 시작해요' },
+      { id: 'month', label: '이번 달', sub: `${now.getMonth() + 1}월`, from: today, to: ymdOf(new Date(now.getFullYear(), now.getMonth() + 1, 0)), before: '지금 열리고 있어요', within: `${now.getMonth() + 1}월에 새로 시작해요` },
+      { id: 'next', label: '다음 달', sub: `${next.getMonth() + 1}월`, from: ymdOf(next), to: ymdOf(new Date(next.getFullYear(), next.getMonth() + 1, 0)), before: '이번 달부터 이어져요', within: `${next.getMonth() + 1}월에 시작해요` },
+    ];
+  }
+  const evRows = (per) => evData.list.filter((e) => e.start <= per.to && e.end >= per.from);
+  function evPlace(e) {
+    return {
+      id: 'ev-' + e.id, name: e.name, category: '축제·행사', env: '야외', url: '', origin: 'live',
+      region: e.region, area: e.area, lat: e.lat, lng: e.lng, image: e.image, homepage: e.homepage, start: e.start, end: e.end,
+      note: e.overview || '', evLabel: evDates(e), evBadge: '행사',
+      popularity: { kind: 'festival', label: `${evDates(e)} 열려요`, source: '한국관광공사 행사정보', basis: String((evData.meta && evData.meta.fetchedAt) || '').slice(0, 10), score: 0 },
+      hours: { period: evDates(e), addr: e.addr, usetime: '', restdate: '', infocenter: e.tel, reservation: '', source: '한국관광공사 행사정보' },
+    };
+  }
+  function evRow(p) {
+    const today = ymdOf(new Date());
+    const days = Math.round((dateOf(p.start) - dateOf(today)) / 86400000);
+    const tag = p.start <= today ? '<span class="tag on">진행 중</span>' : `<span class="tag">${days === 1 ? '내일' : `D-${days}`}</span>`;
+    const heart = !isSaved(p) ? `<button class="heart-s" data-save="${esc(p.id)}" aria-label="${esc(p.name)} 저장">♡</button>` : '';
+    const ev = eventHref(p);
+    return `<div class="item evrow"><div class="ico" style="background:#fbe2cf" aria-hidden="true">🎪${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" onerror="this.remove()">` : ''}</div>` +
+      `<div class="txt" data-detail="${esc(p.id)}" role="button" tabindex="0"><b>${esc(p.name)}</b><span class="when">${esc(evDates(p))} ${tag}</span>` +
+      `<span class="muted">${[distText(p), p.region].filter(Boolean).map(esc).join(' · ')}</span></div>` +
+      `<div class="acts">${heart}<a class="link maplink" target="_blank" rel="noopener noreferrer" href="${esc(ev.href)}" aria-label="${esc(p.name)} ${ev.label}">${p.homepage ? '🎪 사이트' : '🔎 검색'}</a></div></div>`;
+  }
+  function renderEvents() {
+    loadEvents();
+    const pers = evPeriods();
+    const per = pers.find((x) => x.id === ui.evWhen) || pers[0];
+    const ok = evData.status === 'ok';
+    $('evWhen').innerHTML = pers.map((x) => `<button data-evwhen="${x.id}" class="${x.id === per.id ? 'active' : ''}">${x.label} <small>${x.sub}${ok ? ` · ${evRows(x).length}건` : ''}</small></button>`).join('');
+    const when = ok && evData.meta.fetchedAt ? new Date(evData.meta.fetchedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+    $('evStatus').textContent = ok ? `한국관광공사 행사정보 · 전국 ${evData.list.length}건 · ${when} 업데이트`
+      : evData.status === 'error' ? evData.error : evData.status === 'pending' ? '행사 데이터를 처음 만드는 중이에요(몇 분 걸려요).' : '행사 정보를 불러오는 중…';
+    $('evStatus').classList.toggle('off', evData.status === 'error');
+    const all = ok ? evRows(per) : [];
+    const counts = countBy(all, subKey);
+    const subs = SUBS.filter((k) => counts[k]);
+    if (ui.evSub && !counts[ui.evSub]) ui.evSub = '';
+    const rows = ui.evSub ? all.filter((p) => subKey(p) === ui.evSub) : all;
+    const near = ui.evSort === 'near' && here;
+    $('evBar').innerHTML = `<select id="evSub" class="subsel" aria-label="지역"><option value="">전국 ${all.length}건</option>` +
+      subs.map((k) => `<option value="${esc(k)}" ${ui.evSub === k ? 'selected' : ''}>${esc(subLabel(k))} ${counts[k]}건</option>`).join('') + '</select>' +
+      seg('data-esort', near ? 'near' : 'date', [['date', '날짜순'], ['near', '거리순']]);
+    if (!ok) { $('evList').innerHTML = ''; return; }
+    if (!rows.length) { $('evList').innerHTML = `<div class="empty"><p>${esc(per.label)}에 열리는 행사가 없어요.</p></div>`; return; }
+    if (near) { $('evList').innerHTML = `<div class="list">${C.byDistance(rows, here).map(evRow).join('')}</div>`; return; }
+    // 날짜순: 기간 안에 새로 시작하는 행사(시작하는 날 순)와 그 전부터 이어지는 행사(끝나는 날 순)로 나눠요.
+    const within = rows.filter((p) => p.start >= per.from).sort((a, b) => a.start.localeCompare(b.start));
+    const before = rows.filter((p) => p.start < per.from).sort((a, b) => a.end.localeCompare(b.end));
+    $('evList').innerHTML = [[per.within, within], [per.before, before]].filter(([, l]) => l.length)
+      .map(([t, l]) => `<div class="group-head"><h3>${esc(t)} <span class="muted">${l.length}건</span></h3></div><div class="list">${l.map(evRow).join('')}</div>`).join('');
   }
 
   // ---------- 화면: 홈 ----------
@@ -599,7 +669,7 @@
 
   // ---------- 설정 동작 ----------
   $('setRegion').onchange = () => { ui.region = $('setRegion').value; saveUi(); loadLive(); render(); };
-  $('setReload').onclick = () => { try { localStorage.removeItem(C.LIVE_CACHE_KEY); } catch { /* */ } loadLive(true); loadNation(true); };
+  $('setReload').onclick = () => { try { localStorage.removeItem(C.LIVE_CACHE_KEY); } catch { /* */ } loadLive(true); loadNation(true); loadEvents(true); };
   $('backupSave').onclick = () => {
     const blob = new Blob([C.exportBackup(saved)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -640,15 +710,16 @@
     if ((el = q('[data-hgroup]'))) { ui.homeGroup = el.dataset.hgroup; saveUi(); render(); return; }
     if ((el = q('[data-env]'))) { ui.env = el.dataset.env; saveUi(); render(); return; }
     if ((el = q('[data-fgroup]'))) { ui.favGroup = el.dataset.fgroup; ui.favCat = ''; ui.favRegion = ''; saveUi(); render(); return; }
-    if ((el = q('[data-fsort], [data-psort]'))) {
-      const key = el.dataset.fsort ? 'favOrder' : 'popSort';
-      const v = el.dataset.fsort || el.dataset.psort;
+    if ((el = q('[data-fsort], [data-psort], [data-esort]'))) {
+      const key = el.dataset.fsort ? 'favOrder' : el.dataset.psort ? 'popSort' : 'evSort';
+      const v = el.dataset.fsort || el.dataset.psort || el.dataset.esort;
       if (v === 'near' && !here) {
         if (!navigator.geolocation || !window.isSecureContext) { toast('이 주소에서는 위치를 쓸 수 없어요(https 주소에서 열어 주세요).'); return; }
         locate(() => { ui[key] = 'near'; saveUi(); render(); }); return;
       }
       ui[key] = v; saveUi(); render(); return;
     }
+    if ((el = q('[data-evwhen]'))) { ui.evWhen = el.dataset.evwhen; saveUi(); render(); return; }
     if ((el = q('[data-parea]'))) { ui.popArea = el.dataset.parea; ui.popSub = ''; saveUi(); render(); return; }
     if ((el = q('[data-mapapp]'))) { ui.mapApp = el.dataset.mapapp; saveUi(); render(); toast(`장소는 ${MAP_APPS[ui.mapApp]}로 열어요`); return; }
     if ((el = q('[data-fcat]'))) { ui.favCat = el.dataset.fcat; ui.favRegion = ''; saveUi(); render(); return; }
@@ -675,6 +746,7 @@
   document.addEventListener('change', (e) => {
     const t = e.target;
     if (t.id === 'popSub') { ui.popSub = t.value; saveUi(); render(); }
+    if (t.id === 'evSub') { ui.evSub = t.value; saveUi(); render(); }
     if (t.id === 'regionPill') { ui.region = t.value; saveUi(); loadLive(); render(); }
     if (t.dataset.hg) {
       const id = t.dataset.hg;
@@ -734,6 +806,27 @@
     }));
     nation.status = 'ok';
     if (route() === 'popular') render();
+  }
+  // 행사 모아보기: 전국 행사 파일 하나(data/events.json, 로컬 서버는 /api/events)
+  let evData = { status: 'idle', list: [], meta: null };
+  async function loadEvents(force) {
+    if (evData.status === 'loading' || (evData.status === 'ok' && !force)) return;
+    if (API === '' && !DATA) return;
+    evData = { ...evData, status: 'loading' };
+    try {
+      const res = DATA ? await fetch(`${DATA}/events.json`, { cache: force ? 'reload' : 'default', signal: AbortSignal.timeout(20000) })
+        : await fetch(`${API}/events${force ? '?refresh=1' : ''}`, { signal: AbortSignal.timeout(45000) });
+      const data = await res.json().catch(() => null);
+      if (res.status === 202) {
+        evData = { status: 'pending', list: [], meta: null };
+        clearTimeout(loadEvents.retry); loadEvents.retry = setTimeout(() => loadEvents(), 60000);
+      } else {
+        if (!res.ok || !data || !Array.isArray(data.events)) throw new Error((data && data.error) || `HTTP ${res.status}`);
+        evData = { status: 'ok', list: [], meta: data };
+        evData.list = data.events.map(evPlace);
+      }
+    } catch (err) { evData = { status: 'error', list: [], meta: null, error: liveErrorText(err) }; }
+    if (['popular', 'events'].includes(route())) render();
   }
   function useLive(data, stale) {
     live = {

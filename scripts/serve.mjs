@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { discover, mergeDiscover } from '../supabase/functions/_shared/tour.js';
+import { discover, events, mergeDiscover } from '../supabase/functions/_shared/tour.js';
 import { importList } from '../supabase/functions/_shared/lists.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -24,7 +24,7 @@ const CACHE_DIR = path.resolve(here, '..', '.cache');
 const FRESH_MS = 12 * 60 * 60 * 1000;
 const running = new Map();
 async function readCache(region) {
-  try { return JSON.parse(await fs.readFile(path.join(CACHE_DIR, `discover-${region}.json`), 'utf8')); } catch { return null; }
+  try { return JSON.parse(await fs.readFile(path.join(CACHE_DIR, region === 'events' ? 'events.json' : `discover-${region}.json`), 'utf8')); } catch { return null; }
 }
 function refresh(region) {
   if (running.has(region)) return;
@@ -54,6 +54,24 @@ http.createServer(async (req, res) => {
     if (!fresh || url.searchParams.get('refresh')) refresh(region); // 설정의 '다시 불러오기'는 기존 데이터를 보여주면서 새로 만들어요
     if (cached) return sendJson(res, 200, { ...cached, refreshing: !fresh });
     return sendJson(res, 202, { pending: true, message: '인기 장소 데이터를 처음 만드는 중이에요. 몇 분 걸려요.' });
+  }
+  if (url.pathname === '/api/events') {
+    if (!KEY) return sendJson(res, 503, { error: 'TOUR_API_KEY가 설정되지 않았어요.' });
+    const cached = await readCache('events');
+    const fresh = cached && Date.now() - new Date(cached.fetchedAt).getTime() < FRESH_MS;
+    if ((!fresh || url.searchParams.get('refresh')) && !running.has('events')) {
+      console.log('[events] 데이터 만들기 시작');
+      running.set('events', events(KEY, cached)
+        .then(async (body) => {
+          await fs.mkdir(CACHE_DIR, { recursive: true });
+          await fs.writeFile(path.join(CACHE_DIR, 'events.json'), JSON.stringify(body));
+          console.log(`[events] 완료: ${body.events.length}건`);
+        })
+        .catch((e) => console.warn('[events] 실패:', hide(e.message)))
+        .finally(() => running.delete('events')));
+    }
+    if (cached) return sendJson(res, 200, cached);
+    return sendJson(res, 202, { pending: true });
   }
   if (url.pathname === '/api/import-list') {
     try { return sendJson(res, 200, await importList(url.searchParams.get('url') || '')); }

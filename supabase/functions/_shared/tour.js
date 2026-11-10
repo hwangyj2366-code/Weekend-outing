@@ -205,6 +205,51 @@ async function festivals(key, provs) {
   return top;
 }
 
+// 행사 화면용: 오늘부터 다음 달 말까지 열리는 전국 축제·행사(이미 시작해 진행 중인 것 포함).
+// 공식 사이트·소개글은 행사마다 한 번 더 불러야 해서, 이전 결과(prev)에 있으면 그대로 쓰고 새 행사만 최대 maxDetail건 불러요.
+const AREA_OF = Object.fromEntries(['sg', 'incheon', 'gangwon', 'chung', 'jeolla', 'gyeong', 'jeju'].flatMap((a) => REGION[a].map((p) => [p, a])));
+export async function events(key, prev = null, maxDetail = 120) {
+  const now = new Date(Date.now() + 9 * 3600 * 1000);
+  const today = ymd(now);
+  const end = ymd(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 0)));
+  const from = new Date(now); from.setUTCDate(from.getUTCDate() - 120);
+  const seen = new Set(); const out = []; const errors = [];
+  await Promise.all(Object.keys(PROV).map(async (p) => {
+    const items = await call(key, KOR, 'searchFestival2', { eventStartDate: ymd(from), lDongRegnCd: p, numOfRows: '500', arrange: 'A' })
+      .catch((e) => { errors.push(`${PROV[p]}: ${e.message}`); return []; });
+    for (const it of items) {
+      const s = String(it.eventstartdate ?? ''), e = String(it.eventenddate ?? '');
+      const name = strip(it.title);
+      if (!name || !s || !e || s > end || e < today || NOT_FOR_KIDS.test(name) || seen.has(it.contentid)) continue;
+      seen.add(it.contentid);
+      out.push({
+        id: String(it.contentid), name, start: s, end: e, prov: p, area: AREA_OF[p], region: regionOf(it.addr1, PROV[p]),
+        addr: strip(it.addr1), image: https(it.firstimage), lat: Number(it.mapy) || null, lng: Number(it.mapx) || null, tel: strip(it.tel),
+      });
+    }
+  }));
+  if (!out.length && errors.length) throw new Error(errors.join(' / '));
+  const old = new Map((prev?.events || []).map((x) => [x.id, x]));
+  const todo = [];
+  for (const ev of out) {
+    const o = old.get(ev.id);
+    if (o && o.detailAt) Object.assign(ev, { homepage: o.homepage, overview: o.overview, detailAt: o.detailAt });
+    else todo.push(ev);
+  }
+  // 가까운 날짜에 시작하는 행사부터 상세 정보를 채워요.
+  todo.sort((a, b) => a.start.localeCompare(b.start));
+  await pool(todo.slice(0, maxDetail), 6, async (ev) => {
+    const [it] = await call(key, KOR, 'detailCommon2', { contentId: ev.id });
+    const url = (/https?:\/\/[^\s"'<>]+/.exec(String(it?.homepage ?? '')) || [])[0];
+    if (url) ev.homepage = url.replace(/[.,)]+$/, '');
+    const ov = strip(it?.overview);
+    if (ov) ev.overview = ov.length > 180 ? ov.slice(0, 180) + '…' : ov;
+    ev.detailAt = today;
+  });
+  out.sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name));
+  return { fetchedAt: new Date().toISOString(), today, until: end, source: '한국관광공사 행사정보', errors, events: out };
+}
+
 async function listed(key, provs) {
   const out = [];
   await pool(provs.flatMap((p) => ['12', '14'].map((t) => ({ p, t }))), 6, async ({ p, t }) => {

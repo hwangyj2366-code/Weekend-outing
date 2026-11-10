@@ -82,6 +82,18 @@ main{overflow-x:clip}
 .item{padding-left:10px;gap:10px}
 .item .ico{width:40px;height:40px;font-size:21px}
 .subsel{width:auto;max-width:56%;min-height:38px;padding:4px 10px;font-size:14px;border-radius:30px}
+.evbanner{display:flex;align-items:center;gap:12px;background:#fff2d6;border:1px solid #f1dcae;border-radius:16px;padding:12px 14px;margin:0 0 10px;color:inherit;text-decoration:none}
+.evbanner .big{font-size:28px}
+.evbanner > span:nth-child(2){flex:1;min-width:0}
+.evbanner b{display:block;font-size:17px}
+.evbanner .muted{display:block;font-size:13px}
+.evbanner .go{font-size:24px;color:var(--green);font-weight:700}
+.evrow .ico{overflow:hidden;position:relative}
+.evrow .ico img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.evrow .txt .when{display:block;white-space:normal;font-size:13px;font-weight:700;color:#9a5a12}
+.evrow .when .tag{display:inline;margin-left:4px;font-weight:600}
+#evWhen small{font-size:12px;opacity:.75;margin-left:2px}
+.tag.on{background:#e3f0d5;color:#2f5d16}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:30px;overflow:hidden}
 .seg button{border:0;border-radius:0;min-height:38px;padding:4px 14px}
 .seg button+button{border-left:1px solid var(--line)}
@@ -170,6 +182,7 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
 
   <!-- 인기 (전체 목록) -->
   <div id="page-popular" data-page="popular" hidden>
+    <a class="evbanner" href="#events" id="evBanner"><span class="big">🎪</span><span><b>행사 모아보기</b><span class="muted" id="evBannerSub">이번 주말 · 이번 달 · 다음 달 축제와 행사</span></span><span class="go">›</span></a>
     <div class="filters">
       <div class="chips" id="popArea" role="group" aria-label="지역"></div>
       <div class="chips" id="popGroups" role="group" aria-label="분류"></div>
@@ -179,6 +192,15 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
     <div class="row between" id="popBar" style="margin:6px 0 8px"></div>
     <div id="popAll"></div>
     <p style="text-align:center;margin-top:14px"><button class="ghost small" id="popInfo">ⓘ ‘인기’는 이렇게 골라요</button></p>
+  </div>
+
+  <!-- 행사 모아보기 (인기 화면에서 들어와요) -->
+  <div id="page-events" data-page="events" hidden>
+    <div class="chips" id="evWhen" role="group" aria-label="기간"></div>
+    <p class="status" id="evStatus" role="status"></p>
+    <div class="row between" id="evBar" style="margin:6px 0 8px"></div>
+    <div id="evList"></div>
+    <p class="muted" style="text-align:center;margin-top:14px;font-size:13px">행사 일정·장소는 바뀔 수 있어요. 가기 전에 행사 사이트에서 꼭 확인해 주세요.</p>
   </div>
 
   <!-- 즐겨찾기 -->
@@ -230,7 +252,7 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
       <h3>📱 휴대폰에 설치하기</h3>
       <p class="muted"><b>안드로이드(크롬)</b> 메뉴 ⋮ → ‘홈 화면에 추가’ → 설치하면 앱처럼 열리고, 네이버·구글지도의 <b>공유</b> 메뉴에 ‘주말나들이’가 나타나 바로 보낼 수 있어요.<br><b>아이폰(사파리)</b> 공유 버튼 → ‘홈 화면에 추가’. 지도 앱에서는 공유 → 링크 복사 후 즐겨찾기 → 가져오기에 붙여 넣어 주세요.</p>
     </div>
-    <p class="muted" style="text-align:center">관광 정보 출처: 한국관광공사 · 즐겨찾기는 이 기기 브라우저에만 저장돼요.<br>주말에 어디가지? v2.2</p>
+    <p class="muted" style="text-align:center">관광 정보 출처: 한국관광공사 · 즐겨찾기는 이 기기 브라우저에만 저장돼요.<br>주말에 어디가지? v2.3</p>
   </div>
 </main>
 

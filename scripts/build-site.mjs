@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkKey, discover, mergeDiscover } from '../supabase/functions/_shared/tour.js';
+import { checkKey, discover, events, mergeDiscover } from '../supabase/functions/_shared/tour.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -51,6 +51,23 @@ for (const region of DATA_REGIONS) {
   if (!body) { summary.push(`${region}: 데이터 없음(앱은 기본 추천을 보여줘요)`); continue; }
   await fs.writeFile(path.join(out, 'data', `discover-${region}.json`), JSON.stringify(body));
   summary.push(`${region}: ${body.places.length}곳, 위치 ${body.places.filter((p) => p.lat != null).length}곳, ${Math.round((Date.now() - started) / 1000)}초${body === prev ? ' (이전 데이터)' : ''}`);
+}
+// 행사 모아보기: 전국 행사 한 파일. 공식 사이트·소개글은 이전 파일에 있으면 다시 부르지 않아요(호출 한도 아끼기).
+{
+  const started = Date.now();
+  let prev = null;
+  if (SITE_URL) {
+    try { const res = await fetch(`${SITE_URL}/data/events.json`, { signal: AbortSignal.timeout(15000) }); prev = res.ok ? await res.json() : null; } catch { /* 처음 */ }
+  }
+  let body = null;
+  if (check === 'ok') {
+    try { body = await events(KEY, prev); } catch (e) { console.warn(`[events] 만들기 실패: ${hide(e.message)}`); }
+  }
+  if (!body && prev && Date.now() - new Date(prev.fetchedAt).getTime() < 7 * 24 * 3600 * 1000) body = prev;
+  if (body) {
+    await fs.writeFile(path.join(out, 'data', 'events.json'), JSON.stringify(body));
+    summary.push(`events: ${body.events.length}건, 사이트 ${body.events.filter((e) => e.homepage).length}건, ${Math.round((Date.now() - started) / 1000)}초${body === prev ? ' (이전 데이터)' : ''}`);
+  } else summary.push('events: 데이터 없음');
 }
 await fs.writeFile(path.join(out, 'data', 'index.json'), JSON.stringify({ builtAt: new Date().toISOString(), regions: DATA_REGIONS, check, keyId, summary }));
 console.log(summary.join('\n'));
