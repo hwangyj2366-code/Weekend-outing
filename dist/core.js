@@ -144,7 +144,10 @@
       return ['https:', 'http:'].includes(u.protocol) ? u.href : '';
     } catch { return ''; }
   }
-  function canonicalUrl(s) {
+  // 같은 주소·이름을 여러 번 비교하므로 결과를 기억해 둬요(인기·맛집 목록이 수백 곳이라 매번 해석하면 느려요).
+  const memo = (fn) => { const m = new Map(); return (s) => { const k = String(s ?? ''); let v = m.get(k); if (v === undefined) { if (m.size > 20000) m.clear(); v = fn(k); m.set(k, v); } return v; }; };
+  const canonicalUrl = memo(canonicalUrlRaw);
+  function canonicalUrlRaw(s) {
     const v = validUrl(s);
     if (!v) return '';
     const u = new URL(v);
@@ -160,7 +163,7 @@
     if (/goo\.gl|google\./.test(h)) return '구글지도';
     return '지도';
   }
-  const normName = (s) => String(s || '').toLowerCase().replace(/[\s()[\]{}·.,_\-'"`~!]/g, '');
+  const normName = memo((s) => s.toLowerCase().replace(/[\s()[\]{}·.,_\-'"`~!]/g, ''));
 
   function isDup(a, b) {
     const ua = canonicalUrl(a.url), ub = canonicalUrl(b.url);
@@ -388,11 +391,12 @@
 
   // '새로운 장소': 실시간 후보 + 기본 추천을 합치고 이미 저장한 곳은 뺍니다.
   function discoverPool(live, seed, saved) {
-    const pool = [];
+    const pool = []; const seen = new Set();
     for (const p of [...(live || []), ...seed]) {
-      if (pool.some((x) => normName(x.name) === normName(p.name))) continue;
-      if (saved.some((s) => isDup(s, p))) continue;
-      pool.push(p);
+      const n = normName(p.name);
+      if (seen.has(n)) continue;
+      if (saved.length && saved.some((s) => isDup(s, p))) continue;
+      seen.add(n); pool.push(p);
     }
     return pool;
   }
