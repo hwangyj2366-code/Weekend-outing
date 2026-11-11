@@ -4,3 +4,15 @@ supabase/.temp/
 *.log
 .cache/
 site/
+
+# 안드로이드 앱: 서명 키·비밀번호·빌드 결과는 올리지 않아요
+android/*.keystore
+android/keystore.local.json
+android/app/build/
+android/build/
+android/.gradle/
+android/*.apk
+android/*.aab
+android/*.idsig
+android/local.properties
+user-site/
