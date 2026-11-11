@@ -257,7 +257,7 @@
     document.querySelectorAll('[data-page]').forEach((el) => { el.hidden = el.dataset.page !== r; });
     document.querySelectorAll('[data-tab]').forEach((a) => a.setAttribute('aria-current', a.dataset.tab === (r === 'events' ? 'popular' : r) ? 'page' : 'false'));
     $('tabCount').hidden = !saved.length; $('tabCount').textContent = saved.length;
-    $('title').textContent = r === 'home' ? '🌿 주말에 어디가지?' : r === 'popular' ? '🧭 가볼만한 곳' : r === 'events' ? '🎪 행사 모아보기' : r === 'food' ? '🍽 맛집' : r === 'saved' ? `⭐ 즐겨찾기 ${saved.length}곳` : '⚙️ 설정';
+    $('title').textContent = r === 'home' ? '🌿 주말에 어디가지?' : r === 'popular' ? '🚸 가볼만한 곳' : r === 'events' ? '🎪 행사 모아보기' : r === 'food' ? '🍽 맛집' : r === 'saved' ? `⭐ 즐겨찾기 ${saved.length}곳` : '⚙️ 설정';
     $('topAction').innerHTML = r === 'home'
       ? `<select id="regionPill" class="pill" aria-label="지역">${C.REGIONS.map((x) => `<option value="${x.id}" ${x.id === ui.region ? 'selected' : ''}>📍 ${esc(x.label)}</option>`).join('')}</select>`
       : r === 'popular' || r === 'food' ? '<button class="primary small" data-near-map>🗺 지도로 보기</button>'
@@ -607,7 +607,6 @@
     return { inCat, rows: C.filterPlaces(inRegion, { q: $('search').value }) };
   }
   function renderSaved() {
-    $('favAuth').innerHTML = SB_URL && SB_KEY && !user ? '<a class="authnote" href="#settings">👤 로그인하지 않아서 이 기기에만 저장돼요. <b>로그인·가입 ›</b></a>' : '';
     const srcCounts = countBy(saved, srcOf);
     const srcs = Object.keys(SRC).filter((k) => srcCounts[k]);
     if (ui.favSrc && !srcCounts[ui.favSrc]) ui.favSrc = '';
@@ -1108,27 +1107,33 @@
   async function initAuth() {
     if (!SB_URL || !SB_KEY) return;
     const fromLink = /access_token=|error_description=/.test(location.hash);
-    // 로그인한 적이 없고 메일 링크로 연 것도 아니면, 설정 화면을 열 때까지 로그인 도구를 받지 않아요.
-    if (!fromLink && !localStorage.getItem(SYNC_KEY) && route() !== 'settings' && !initAuth.force) return;
     if (sb) return;
+    if (initAuth.p) return initAuth.p;
+    initAuth.p = initAuthOnce(fromLink);
+    try { await initAuth.p; } finally { initAuth.p = null; }
+  }
+  async function initAuthOnce(fromLink) {
     try {
       await loadScript(SB_LIB);
       sb = window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' } });
       sb.auth.onAuthStateChange((ev, session) => {
         const was = user && user.id;
         user = session ? session.user : null;
+        gate.checked = true;
         if (user && was !== user.id) {
-          if (/access_token=/.test(location.hash)) history.replaceState(null, '', location.pathname + '#settings');
+          if (/access_token=/.test(location.hash)) history.replaceState(null, '', location.pathname + '#home');
           toast(`${user.email}(으)로 로그인했어요`);
           syncNow();
         }
-        render();
+        showGate(); render();
       });
       const { data } = await sb.auth.getSession();
       user = data.session ? data.session.user : null;
-      if (/error_description=/.test(location.hash)) { const m = new URLSearchParams(location.hash.slice(1)).get('error_description'); history.replaceState(null, '', location.pathname + '#settings'); sync.err = m || '로그인 링크가 만료됐어요. 다시 받아 주세요.'; }
+      gate.checked = true;
+      if (/error_description=/.test(location.hash)) { const m = new URLSearchParams(location.hash.slice(1)).get('error_description'); history.replaceState(null, '', location.pathname + '#home'); gate.err = m ? '확인 링크가 만료됐어요. 다시 가입하거나 로그인해 주세요.' : ''; }
       if (user) { if (!readSync().uid) writeSync({ ...readSync() }); syncNow(); }
-    } catch (e) { sync.err = String(e.message || e); }
+    } catch (e) { sync.err = String(e.message || e); gate.err = sync.err; }
+    showGate();
     if (route() === 'settings') renderSettings();
   }
   // 가입·로그인: 이메일 + 비밀번호. 가족마다 각자 가입하면 즐겨찾기가 계정별로 따로 저장돼요.
@@ -1137,22 +1142,59 @@
       : /not confirmed/i.test(m) ? '가입 확인 메일의 링크를 먼저 눌러 주세요.'
         : /rate|seconds/i.test(m) ? '너무 자주 시도했어요. 잠시 뒤 다시 해 주세요.'
           : /password/i.test(m) && /least|weak|short/i.test(m) ? '비밀번호를 6자 이상으로 해 주세요.' : m);
-  async function doAuth(mode) {
-    const email = $('acEmail').value.trim(); const pw = $('acPw').value;
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('이메일 주소를 확인해 주세요'); return; }
-    if (pw.length < 6) { toast('비밀번호는 6자 이상으로 해 주세요'); return; }
-    initAuth.force = true; await initAuth();
-    if (!sb) { toast(sync.err || '로그인을 쓸 수 없어요'); return; }
-    sync.err = ''; sync.sent = false;
-    $('acIn').disabled = $('acUp').disabled = true;
+  // ---------- 로그인 화면 ----------
+  // 처음 열면 로그인 화면부터: 계정이 없으면 회원가입(이메일 확인) → 로그인. 즐겨찾기는 계정마다 따로예요.
+  var gate = { mode: 'in', checked: false, err: '', busy: false, sent: '', email: '' };
+  const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  // 전에 이 기기에서 로그인했으면, 인터넷이 안 돼 확인을 못 해도 일단 앱을 보여줘요.
+  const knownHere = () => !!readSync().uid;
+  function showGate() {
+    const on = !!(SB_URL && SB_KEY) && !user && (gate.checked || !knownHere());
+    $('gate').hidden = !on;
+    document.body.classList.toggle('gated', on);
+    if (!on) return;
+    const up = gate.mode === 'up';
+    if (gate.sent) {
+      $('gateBody').innerHTML = `<div class="gatemsg"><p>📬 <b>${esc(gate.sent)}</b>(으)로 가입 확인 메일을 보냈어요.</p><p class="muted">메일의 링크를 누른 뒤 로그인해 주세요. 메일이 안 보이면 스팸함도 확인해 주세요.</p></div><button class="primary big" id="gBack">로그인하러 가기</button>`;
+      return;
+    }
+    if ($('gateForm') && $('gateForm').dataset.mode === gate.mode) { gateMsg(); return; }
+    $('gateBody').innerHTML = `<form id="gateForm" data-mode="${gate.mode}" novalidate>
+      <label>이메일<input id="gEmail" type="email" inputmode="email" autocomplete="email" value="${esc(gate.email)}" required></label>
+      <label>비밀번호<input id="gPw" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" placeholder="6자 이상" required></label>
+      ${up ? '<label>비밀번호 확인<input id="gPw2" type="password" autocomplete="new-password" placeholder="한 번 더" required></label>' : ''}
+      <p class="gerr" id="gErr" role="alert"></p>
+      <button class="primary big" id="gGo" type="submit">${up ? '회원가입' : '로그인'}</button>
+    </form>
+    <button class="linkbtn" id="gToggle" type="button">${up ? '이미 계정이 있으신가요? <b>로그인</b>' : '계정이 없으신가요? <b>회원가입</b>'}</button>
+    ${up ? '<p class="muted small">가입하면 확인 메일이 가요. 즐겨찾기·가져온 지도 리스트·설정은 계정마다 따로 저장돼요.</p>' : ''}`;
+    gateMsg();
+  }
+  function gateMsg() {
+    if ($('gErr')) $('gErr').textContent = gate.err || '';
+    if ($('gGo')) { $('gGo').disabled = gate.busy; $('gGo').textContent = gate.busy ? '잠시만요…' : gate.mode === 'up' ? '회원가입' : '로그인'; }
+  }
+  async function doAuth() {
+    const mode = gate.mode;
+    const email = $('gEmail').value.trim(); const pw = $('gPw').value;
+    gate.email = email;
+    gate.err = !EMAIL_RE.test(email) ? '올바른 이메일 주소를 입력해 주세요.' : pw.length < 6 ? '비밀번호는 6자 이상이어야 해요.'
+      : mode === 'up' && $('gPw2').value !== pw ? '비밀번호 확인이 달라요.' : '';
+    if (gate.err) { gateMsg(); return; }
+    gate.busy = true; gateMsg();
+    await initAuth();
+    if (!sb) { gate.busy = false; gate.err = sync.err || '로그인을 쓸 수 없어요(인터넷 연결 확인)'; gateMsg(); return; }
     let res;
     try {
       res = mode === 'up' ? await sb.auth.signUp({ email, password: pw, options: { emailRedirectTo: location.origin + location.pathname } })
         : await sb.auth.signInWithPassword({ email, password: pw });
     } catch (e) { res = { error: e }; }
-    if (res.error) sync.err = authErr(String(res.error.message || res.error));
-    else if (mode === 'up' && !res.data.session) sync.sent = email; // 가입 확인 메일을 쓰는 설정일 때
-    if (!user) renderSettings();
+    gate.busy = false;
+    if (res.error) gate.err = authErr(String(res.error.message || res.error));
+    // 이미 가입한 이메일로 다시 가입하면 Supabase는 오류 대신 빈 계정을 돌려줘요
+    else if (mode === 'up' && res.data.user && Array.isArray(res.data.user.identities) && !res.data.user.identities.length) gate.err = '이미 가입한 이메일이에요. 로그인해 주세요.';
+    else if (mode === 'up' && !res.data.session) gate.sent = email;
+    if (!user) showGate();
   }
   async function signOut() {
     if (!await ask('로그아웃할까요?\n즐겨찾기는 계정에 그대로 있고, 이 기기에서는 비워져요. 다시 로그인하면 돌아와요.', '로그아웃')) return;
@@ -1174,13 +1216,7 @@
       return `<p><b>📧 ${esc(user.email)}</b></p><p class="muted">${sync.busy ? '동기화하는 중…' : sync.err ? '⚠️ ' + esc(sync.err) : st.at ? `즐겨찾기·제외 목록·설정이 이 계정에 저장돼요 · 마지막 동기화 ${when(st.at)}` : '동기화 준비 중…'}</p>` +
         '<div class="row wrapline"><button id="acSync">🔄 지금 동기화</button><button class="ghost" id="acOut">로그아웃</button></div>';
     }
-    if (sync.sent) return `<p><b>📬 ${esc(sync.sent)}</b>(으)로 가입 확인 메일을 보냈어요.</p><p class="muted">메일의 링크를 누른 뒤, 여기서 [로그인] 해 주세요. 메일이 안 보이면 스팸함도 확인해 주세요.</p><button class="ghost small" id="acAgain">로그인 화면으로</button>`;
-    return '<p class="muted">가족마다 각자 가입하면 즐겨찾기·제외 목록·설정이 계정별로 따로 저장돼요. 같은 계정으로 로그인하면 휴대폰과 PC에서 같이 볼 수 있어요.</p>' +
-      '<div class="authform"><input id="acEmail" type="email" inputmode="email" autocomplete="email" placeholder="이메일" aria-label="이메일">' +
-      '<input id="acPw" type="password" autocomplete="current-password" placeholder="비밀번호 (6자 이상)" aria-label="비밀번호">' +
-      '<div class="row" style="gap:6px"><button class="primary" id="acIn">로그인</button><button id="acUp">처음이면 가입하기</button></div></div>' +
-      (saved.length ? `<p class="muted">지금은 로그인하지 않아서 ${saved.length}곳이 이 기기에만 저장돼 있어요. 로그인하면 계정에 합칠 수 있어요.</p>` : '') +
-      (sync.err ? `<p class="muted">⚠️ ${esc(sync.err)}</p>` : '');
+    return '<p class="muted">로그인 정보를 확인하는 중…</p>';
   }
 
   // ---------- 이벤트 ----------
@@ -1190,11 +1226,10 @@
     let el;
     if ((el = q('[data-close]'))) { el.closest('dialog').close(); return; }
     if (q('[data-open-import]')) { openImport(); return; }
-    if (q('#acIn')) { doAuth('in'); return; }
-    if (q('#acUp')) { doAuth('up'); return; }
     if (q('#acSync')) { syncNow(true); return; }
     if (q('#acOut')) { signOut(); return; }
-    if (q('#acAgain')) { sync.sent = false; renderSettings(); return; }
+    if (q('#gToggle')) { gate.mode = gate.mode === 'up' ? 'in' : 'up'; gate.err = ''; showGate(); return; }
+    if (q('#gBack')) { gate.sent = ''; gate.mode = 'in'; gate.err = ''; showGate(); return; }
     if ((el = q('[data-unsave]'))) {
       e.stopPropagation();
       const id = el.dataset.unsave;
@@ -1414,8 +1449,9 @@
 
   // 다른 기기에서 바꾼 내용: 앱으로 돌아올 때 받아와요.
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && user) syncNow(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && ['acEmail', 'acPw'].includes(e.target.id)) doAuth('in'); });
+  document.addEventListener('submit', (e) => { if (e.target.id === 'gateForm') { e.preventDefault(); doAuth(); } });
 
+  showGate();
   render();
   loadLive();
   locate();
