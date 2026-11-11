@@ -19,7 +19,7 @@
   let saved = loaded.places;
   if (loaded.migrated) persist(saved, true);
 
-  const defaults = { region: 'sg', homeCat: '', favRecCat: '', env: '', favSrc: '', favCat: '', favRegion: '', favOrder: 'near', popSort: 'score', popSub: '', evWhen: 'weekend', evSub: '', evSort: 'date', mapApp: 'naver', pickFrom: 'all', homeCats: null, customGroups: [] };
+  const defaults = { region: 'sg', homeCat: '', favRecCat: '', env: '', favSrc: '', favCat: '', favRegion: '', favOrder: 'near', popSort: 'score', popSub: '', foodSrc: '', foodKind: '', foodKids: false, foodReg: '', foodSort: 'score', evWhen: 'weekend', evSub: '', evSort: 'date', mapApp: 'naver', pickFrom: 'all', homeCats: null, customGroups: [] };
   let ui = { ...defaults };
   try {
     const s = JSON.parse(localStorage.getItem(C.SETTINGS_KEY) || '{}');
@@ -36,6 +36,8 @@
     if (!Array.isArray(ui.homeCats)) ui.homeCats = [...C.OUTING, '맛집·카페'];
     ui.homeCats = ui.homeCats.filter((k) => C.TYPES[k]);
     delete ui.homeGroup; delete ui.homeGroups; delete ui.favGroup; // 예전 큰 분류 설정
+    // 인기·맛집 화면은 열 때마다 인기순으로 시작해요(거리순은 그때그때 눌러서).
+    ui.popSort = 'score'; ui.foodSort = 'score';
   } catch { /* 기본값 */ }
   let live = { status: 'loading', places: [], meta: null };
   let order = new Map(); // 홈 즐겨찾기 추천 섞기 순서
@@ -43,12 +45,16 @@
   let preview = []; // 가져오기 미리보기 항목
 
   function persist(next, quiet) {
-    try { C.savePlaces(localStorage, next); saved = next; return true; } catch {
+    try { C.savePlaces(localStorage, next); saved = next; markDirty(); return true; } catch {
       if (!quiet) alert('브라우저에 저장할 수 없어요. 저장 공간이나 사생활 보호 모드를 확인해 주세요.');
       return false;
     }
   }
-  function saveUi() { try { localStorage.setItem(C.SETTINGS_KEY, JSON.stringify(ui)); } catch { /* 선택 */ } }
+  function saveUi() {
+    try { localStorage.setItem(C.SETTINGS_KEY, JSON.stringify(ui)); } catch { /* 선택 */ }
+    // 계정에 저장하는 설정(지역·지도 앱·홈 분류·추가한 분류)이 바뀌었을 때만 동기화
+    const sig = uiSig(); if (lastUiSig !== undefined && sig !== lastUiSig) markDirty(); lastUiSig = sig;
+  }
   // 확인 창: 휴대폰의 앱 안 브라우저 등은 기본 confirm 창을 막아 버려서, 앱 안의 창으로 물어봐요.
   function ask(msg, ok = '확인') {
     return new Promise((resolve) => {
@@ -105,7 +111,7 @@
     return distMemo.get(k);
   }
   const distText = (p) => C.formatKm(distKm(p));
-  const metaLine = (p, unknown = '') => [distText(p), C.label(p.category), p.env, p.region || unknown].filter(Boolean).map(esc).join(' · ');
+  const metaLine = (p, unknown = '') => [distText(p), p.kind || C.label(p.category), p.kind ? '' : p.env, p.region || unknown].filter(Boolean).map(esc).join(' · ');
 
   // ---------- 내 위치 (자동으로 거리 표시) ----------
   // 앱을 열 때 한 번 위치를 받아 이 기기에 기억해요(다음에 열면 기억한 위치로 바로 표시 후 조용히 갱신).
@@ -147,7 +153,7 @@
   // 리스트를 다시 가져오거나 [업데이트]해도 이 곳들은 건너뛰고, 설정 → 제외한 즐겨찾기에서 되돌릴 수 있어요.
   const EXCL_KEY = 'weekend-excluded-v1';
   const readExcluded = () => { try { const v = JSON.parse(localStorage.getItem(EXCL_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
-  const writeExcluded = (v) => { try { localStorage.setItem(EXCL_KEY, JSON.stringify(v.slice(-3000))); return true; } catch { return false; } };
+  const writeExcluded = (v) => { try { localStorage.setItem(EXCL_KEY, JSON.stringify(v.slice(-3000))); markDirty(); return true; } catch { return false; } };
   const placeKeys = (p) => [C.canonicalUrl(p.url), 'n:' + C.normName(p.name)].filter(Boolean);
   const hits = (x, p) => { const ks = placeKeys(p); return (x.keys || []).some((k) => ks.includes(k)); };
   const isExcluded = (p) => readExcluded().some((x) => hits(x, p));
@@ -198,7 +204,7 @@
   function detailHtml(p) {
     const pop = p.popularity ? `<div class="popbox">${isEvent(p) ? '🎪' : '🔥'} <b>${esc(p.popularity.label)}</b><div class="muted">${esc(p.popularity.source)} · 기준 ${esc(p.popularity.basis)}</div></div>` : '';
     const h = p.hours || {};
-    const rows = [['기간', h.period], ['장소', h.addr], ['이용시간', h.usetime], ['쉬는 날', h.restdate], ['요금', h.usefee], ['유모차', h.babycarriage], ['주차', h.parking], ['예약', h.reservation], ['문의', h.infocenter]].filter(([, v]) => v);
+    const rows = [['기간', h.period], ['장소', h.addr], ['이용시간', h.usetime], ['쉬는 날', h.restdate], ['메뉴', h.menu], ['요금', h.usefee], ['놀이방', h.kids], ['유모차', h.babycarriage], ['주차', h.parking], ['예약', h.reservation], ['문의', h.infocenter]].filter(([, v]) => v);
     const hours = rows.length ? `<dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl><p class="muted">출처: ${esc(h.source || '')}${h.updated ? ` · 정보 수정일 ${esc(h.updated)}` : ''}</p>` : '';
     const note = p.note || (p.origin === 'seed' ? '' : '');
     const savedHere = isSaved(p);
@@ -207,7 +213,7 @@
       (savedHere ? `<button data-unsave="${esc(p.id)}">♥ 즐겨찾기에서 빼기</button>` : `<button data-save="${esc(p.id)}">♡ 즐겨찾기 저장</button>`);
     const km = C.distanceKm(here, p);
     return `${art(p)}<div class="muted" style="margin-top:12px">${metaLine(p, '지역 미확인')}${km != null ? ' <span class="muted">(현재 위치에서 직선거리)</span>' : ''}</div>` +
-      `<h2>${esc(p.name)}</h2>${note ? `<p>${esc(note)}</p>` : ''}${pop}${hours}` +
+      `<h2>${esc(p.name)}</h2>${note ? `<p>${esc(note)}</p>` : ''}${badgeLine(p)}${pop}${p.naver && p.popularity && p.popularity.kind !== 'naver' ? `<div class="popbox">🟢 <b>${esc(p.naver)}</b><div class="muted">네이버 지역 검색(리뷰 많은 순)</div></div>` : ''}${p.addr ? `<p class="muted">📍 ${esc(p.addr)}${p.tel ? ' · ☎ ' + esc(p.tel) : ''}</p>` : ''}${hours}` +
       `<p class="muted">방문 전 운영시간·휴무·예약을 지도나 공식 홈페이지에서 꼭 확인해 주세요.</p>` +
       `<div class="row wrapline">${isEvent(p) ? `<a class="link primary" target="_blank" rel="noopener noreferrer" href="${esc(eventHref(p).href)}">🎪 ${eventHref(p).label}</a>` : ''}${mapButtons(p)}${actions}</div>`;
   }
@@ -219,21 +225,23 @@
   }
   function findPlace(id) {
     return saved.find((p) => p.id === id) || live.places.find((p) => p.id === id) || evData.list.find((p) => p.id === id) ||
-      Object.values(nation.byArea).flat().find((p) => p.id === id) || C.SEED.find((p) => p.id === id);
+      Object.values(nation.byArea).flat().find((p) => p.id === id) || Object.values(nation.foods).flat().find((p) => p.id === id) || C.SEED.find((p) => p.id === id);
   }
 
   // ---------- 화면: 공통 ----------
-  function route() { const r = location.hash.replace('#', ''); return ['home', 'popular', 'events', 'saved', 'settings'].includes(r) ? r : 'home'; }
+  function route() { const r = location.hash.replace('#', ''); return ['home', 'popular', 'events', 'food', 'saved', 'settings'].includes(r) ? r : 'home'; }
   function render() {
     const r = route();
+    if (r !== 'saved' && selMode) { selMode = false; picked.clear(); }
     document.querySelectorAll('[data-page]').forEach((el) => { el.hidden = el.dataset.page !== r; });
     document.querySelectorAll('[data-tab]').forEach((a) => a.setAttribute('aria-current', a.dataset.tab === (r === 'events' ? 'popular' : r) ? 'page' : 'false'));
     $('tabCount').hidden = !saved.length; $('tabCount').textContent = saved.length;
-    $('title').textContent = r === 'home' ? '🌿 주말에 어디가지?' : r === 'popular' ? '🔥 요즘 인기' : r === 'events' ? '🎪 행사 모아보기' : r === 'saved' ? `⭐ 즐겨찾기 ${saved.length}곳` : '⚙️ 설정';
+    $('title').textContent = r === 'home' ? '🌿 주말에 어디가지?' : r === 'popular' ? '🔥 요즘 인기' : r === 'events' ? '🎪 행사 모아보기' : r === 'food' ? '🍽 맛집' : r === 'saved' ? `⭐ 즐겨찾기 ${saved.length}곳` : '⚙️ 설정';
     $('topAction').innerHTML = r === 'home'
       ? `<select id="regionPill" class="pill" aria-label="지역">${C.REGIONS.map((x) => `<option value="${x.id}" ${x.id === ui.region ? 'selected' : ''}>📍 ${esc(x.label)}</option>`).join('')}</select>`
       : r === 'saved' ? '<button class="primary" data-open-import>＋ 가져오기</button>' : r === 'events' ? '<button class="ghost small" data-back>‹ 뒤로</button>' : '';
-    if (r === 'home') renderHome(); else if (r === 'popular') renderPopular(); else if (r === 'events') renderEvents(); else if (r === 'saved') renderSaved(); else renderSettings();
+    selBar();
+    if (r === 'home') renderHome(); else if (r === 'popular') renderPopular(); else if (r === 'events') renderEvents(); else if (r === 'food') renderFood(); else if (r === 'saved') renderSaved(); else renderSettings();
   }
   // 분류 한 줄: 전체 + 설정에서 고른 분류(박물관·체험·놀이·캠핑장·음식점…)
   // attr: data-hcat(요즘 인기·인기 탭) / data-rcat(즐겨찾기에서 추천)
@@ -286,6 +294,49 @@
     if (!rows.length) { $('popAll').innerHTML = '<div class="empty"><p>이 조건에 맞는 인기 장소가 없어요.</p></div>'; return; }
     // 지역은 위 버튼으로 고르니, 목록은 나누지 않고 인기순(또는 거리순) 하나로
     $('popAll').innerHTML = `<div class="list">${(near ? C.byDistance(rows, here) : rows).map(itemRow).join('')}</div>`;
+  }
+
+  // ---------- 화면: 맛집 ----------
+  // 인기 맛집(티맵 연관 순위의 음식점, 순위 없는 지역은 관광공사 등록 음식점) + 내 즐겨찾기의 맛집·카페
+  const FOOD_CAT = '맛집·카페';
+  const isCafe = (p) => (p.kind ? /카페|찻집/.test(p.kind) : /카페|커피|coffee|cafe|베이커리|제과|빵|디저트|찻집/i.test(p.name));
+  const FOOD_SRC = [['', '전체'], ['pop', '🔥 인기'], ['fav', '⭐ 즐겨찾기']];
+  const FOOD_KIND = [['', '전체'], ['meal', '🍚 식당'], ['cafe', '☕ 카페']];
+  function renderFood() {
+    loadNation();
+    const loading = nation.status !== 'ok';
+    const favs = saved.filter((p) => p.category === FOOD_CAT);
+    // 즐겨찾기에 있는 인기 맛집은 인기 쪽에 ♥로 한 번만 보여요.
+    const popAll = loading ? [] : AREAS.flatMap((a) => nation.foods[a] || []).filter((p, i, a) => a.findIndex((x) => C.normName(x.name) === C.normName(p.name)) === i);
+    const favOnly = favs.filter((f) => !popAll.some((p) => C.isDup(f, p)));
+    const kindOk = (p) => (!ui.foodKind || (ui.foodKind === 'cafe') === isCafe(p)) && (!ui.foodKids || p.kids);
+    const bySrc = { pop: popAll.filter(kindOk), fav: [...popAll.filter((p) => isSaved(p)), ...favOnly].filter(kindOk) };
+    bySrc[''] = [...bySrc.pop, ...favOnly.filter(kindOk)];
+    if (!bySrc[ui.foodSrc]) ui.foodSrc = '';
+    const base = bySrc[ui.foodSrc];
+    const regCounts = countBy(base, regionKey);
+    const first = (r) => { const i = REGION_FIRST.indexOf(r); return i < 0 ? 99 : i; };
+    const regs = Object.keys(regCounts).sort((a, b) => (a === UNKNOWN) - (b === UNKNOWN) || first(a) - first(b) || regCounts[b] - regCounts[a]);
+    if (ui.foodReg && !regCounts[ui.foodReg]) ui.foodReg = '';
+    const rows = ui.foodReg ? base.filter((p) => regionKey(p) === ui.foodReg) : base;
+    const near = ui.foodSort === 'near' && here;
+    const chips = (attr, cur, opts) => opts.map(([v, t, n]) => `<button ${attr}="${esc(v)}" class="${cur === v ? 'active' : ''}">${esc(t)}${n != null ? ` <small>${n}</small>` : ''}</button>`).join('');
+    $('foodSrc').innerHTML = chips('data-foodsrc', ui.foodSrc, FOOD_SRC.map(([v, t]) => [v, t, bySrc[v].length]));
+    $('foodKind').innerHTML = chips('data-foodkind', ui.foodKind, FOOD_KIND) + `<button data-foodkids class="${ui.foodKids ? 'active' : ''}">👶 놀이방</button>`;
+    const note = AREAS.map((a) => nation.foodNote[a]).find((x) => /티맵/.test(x || ''));
+    $('foodStatus').textContent = loading ? '맛집을 불러오는 중…' : `${note || '한국관광공사 데이터'}${popAll.some((p) => p.naver || (p.popularity && p.popularity.kind === 'naver')) ? ' · 네이버 리뷰 많은 순' : ''} · 프랜차이즈 제외`;
+    $('foodBar').innerHTML = `<div class="row between sortline"><b>${esc(ui.foodReg || '전국')} ${rows.length}곳</b>` +
+      seg('data-foodsort', near ? 'near' : 'score', [['score', '인기순'], ['near', '거리순']]) + '</div>' +
+      `<div class="chips barchips" role="group" aria-label="지역">${chips('data-foodreg', ui.foodReg, [['', '전국', base.length], ...regs.map((r) => [r, r, regCounts[r]])])}</div>`;
+    if (loading) { $('foodList').innerHTML = ''; return; }
+    if (!rows.length) { $('foodList').innerHTML = `<div class="empty"><p>${ui.foodSrc === 'fav' ? '즐겨찾기에 맛집·카페가 없어요.<br>인기 맛집에서 ♡를 누르거나 지도 리스트를 가져와 보세요.' : '이 조건에 맞는 맛집이 없어요.'}</p></div>`; return; }
+    if (near) { $('foodList').innerHTML = `<div class="list">${C.byDistance(rows, here).map(itemRow).join('')}</div>`; return; }
+    // 인기순: 인기 맛집(점수 순) → 내 즐겨찾기 맛집(가나다순)
+    const score = (p) => (p.popularity && p.popularity.score) || 0;
+    const pops = rows.filter((p) => p.origin).sort((a, b) => score(b) - score(a));
+    const mine = rows.filter((p) => !p.origin).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    $('foodList').innerHTML = [['🔥 인기 맛집', pops], ['⭐ 내 즐겨찾기 맛집', mine]].filter(([, l]) => l.length)
+      .map(([t, l]) => `<div class="group-head"><h3>${t} <span class="muted">${l.length}곳</span></h3></div><div class="list">${l.map(itemRow).join('')}</div>`).join('');
   }
 
   // ---------- 화면: 행사 모아보기 ----------
@@ -422,14 +473,50 @@
 
   // ---------- 화면: 즐겨찾기 ----------
   // 목록 한 줄: 누르면 자세히(편집은 자세히 안에서), 오른쪽은 ♥/♡(빼기·저장)와 설정한 지도 앱으로 열기.
+  // 맛집 배지: 네이버 리뷰 순위, 모범음식점, 백년가게, 어린이 놀이방
+  const BADGE = { '모범음식점': '🏅 모범음식점', '백년가게': '💯 백년가게' };
+  const badgeLine = (p) => {
+    const b = [p.naver && p.popularity && p.popularity.kind !== 'naver' ? '🟢 ' + p.naver : '', ...(p.badges || []).map((x) => BADGE[x] || x), p.kids ? '👶 놀이방' : ''].filter(Boolean);
+    return b.length ? `<span class="badges">${b.map((x) => `<i>${esc(x)}</i>`).join('')}</span>` : '';
+  };
+  // 여러 곳 선택(즐겨찾기 화면): 줄 앞 체크, 아래 막대에서 분류 바꾸기·빼기
+  let selMode = false; const picked = new Set();
+  function selBar() {
+    const bar = $('selBar');
+    bar.hidden = !(selMode && route() === 'saved');
+    if (bar.hidden) return;
+    const n = picked.size;
+    bar.innerHTML = `<div class="wrap"><b>${n}곳 선택</b><button class="small ghost" data-sel-all>전체</button>` +
+      `<select id="selCat" aria-label="선택한 곳 분류 바꾸기" ${n ? '' : 'disabled'}><option value="">분류 바꾸기…</option>${C.categories().map((k) => `<option value="${esc(k)}">${C.TYPES[k].icon} ${esc(C.label(k))}</option>`).join('')}</select>` +
+      `<button class="small danger" data-sel-del ${n ? '' : 'disabled'}>빼기</button><button class="small primary" data-sel-done>완료</button></div>`;
+  }
+  function setPickedCategory(k) {
+    if (!k || !picked.size || !C.TYPES[k]) return;
+    const n = picked.size;
+    const next = saved.map((p) => (picked.has(p.id) ? { ...p, category: k, env: C.TYPES[k].env || p.env || '', manual: true } : p));
+    if (!persist(next)) return;
+    picked.clear(); render(); toast(`${n}곳을 ‘${C.label(k)}’(으)로 옮겼어요`);
+  }
+  async function removePicked() {
+    const list = saved.filter((p) => picked.has(p.id));
+    if (!list.length) return;
+    const imported = list.filter((p) => srcOf(p) !== 'app').length;
+    if (!await ask(`선택한 ${list.length}곳을 즐겨찾기에서 뺄까요?${imported ? `\n네이버·구글 등에서 가져온 ${imported}곳은 제외 목록에 넣어서, 리스트를 다시 [업데이트]해도 들어오지 않아요. 설정 → 제외한 즐겨찾기에서 되돌릴 수 있어요.` : ''}`, `${list.length}곳 빼기`)) return;
+    if (removePlaces(list)) { picked.clear(); render(); toast(`${list.length}곳을 뺐어요`); }
+  }
   function itemRow(p) {
     const t = T(p);
+    if (selMode && route() === 'saved' && !p.origin) {
+      const on = picked.has(p.id);
+      return `<label class="item pick ${on ? 'on' : ''}"><input type="checkbox" data-pick="${esc(p.id)}" ${on ? 'checked' : ''}>` +
+        `<div class="ico" style="background:${t.bg}" aria-hidden="true">${t.icon}</div><div class="txt"><b>${esc(p.name)}</b><span class="muted">${esc(SRC[srcOf(p)])} · ${metaLine(p, '지역 미확인')}</span></div></label>`;
+    }
     const heart = heartBtn(p, 'heart-s');
     // 내 즐겨찾기 줄에는 어디서 가져왔는지 앞에 표시
     const own = !p.origin && saved.some((x) => x.id === p.id);
     return `<div class="item"><div class="ico" style="background:${t.bg}" aria-hidden="true">${t.icon}</div>` +
       `<div class="txt" data-detail="${esc(p.id)}" role="button" tabindex="0"><b>${esc(p.name)}</b><span class="muted">${own ? esc(SRC[srcOf(p)]) + ' · ' : ''}${metaLine(p, '지역 미확인')}</span>` +
-      popLine(p) + '</div>' +
+      popLine(p) + badgeLine(p) + '</div>' +
       `<div class="acts">${heart}${mapLink(p)}</div></div>`;
   }
   const UNKNOWN = '지역 미확인';
@@ -472,20 +559,23 @@
       regs.map((r) => `<button data-freg="${esc(r)}" class="${ui.favRegion === r ? 'active' : ''}">${esc(r)} ${regCounts[r]}</button>`).join('');
     const located = rows.filter((p) => p.lat != null).length;
     $('favMap').hidden = false;
-    $('favBulk').hidden = !(ui.favCat || ui.favSrc || ui.favRegion) || !rows.length;
-    $('favBulk').innerHTML = `<button class="ghost small danger" data-exclude-shown>🚫 이 목록 ${rows.length}곳 모두 빼기</button>`;
+    $('favBulk').hidden = !rows.length;
+    $('favBulk').innerHTML = (selMode ? '' : '<button class="ghost small" data-sel-start>☑ 여러 곳 선택</button>') +
+      ((ui.favCat || ui.favSrc || ui.favRegion) && !selMode ? `<button class="ghost small danger" data-exclude-shown>🚫 이 목록 ${rows.length}곳 모두 빼기</button>` : '');
     const near = ui.favOrder === 'near' && here;
     $('favMap').innerHTML = `<span class="row"><span class="muted">${rows.length}곳</span>` +
       seg('data-fsort', near ? 'near' : 'name', [['near', '거리순'], ['name', '가나다순']]) + '</span>' +
       `<button class="primary small" data-show-map ${rows.length ? '' : 'disabled'}>🗺 지도에서 보기${located < rows.length ? ` (${located}/${rows.length})` : ''}</button>`;
     const sortRows = (list) => (near ? C.byDistance(list, here) : [...list].sort((a, b) => a.name.localeCompare(b.name, 'ko')));
-    const html = ui.favCat || cats.length < 2 || near
+    const html = ui.favCat || cats.length < 2 || near || selMode
       ? `<div class="list">${sortRows(rows).map(itemRow).join('')}</div>`
       : cats.map((k) => {
         const list = sortRows(rows.filter((p) => p.category === k));
         return list.length ? `<div class="group-head"><h3>${C.TYPES[k].icon} ${esc(C.label(k))} <span class="muted">${list.length}</span></h3></div><div class="list">${list.map(itemRow).join('')}</div>` : '';
       }).join('');
     $('favList').innerHTML = rows.length ? html : '<div class="empty" style="margin-top:14px"><p>조건에 맞는 곳이 없어요.</p></div>';
+    for (const id of picked) if (!saved.some((p) => p.id === id)) picked.delete(id);
+    selBar();
   }
 
   // ---------- 지도에서 보기 ----------
@@ -541,6 +631,8 @@
       return `<div class="row between grouprow"><label class="row"><input type="checkbox" data-hc="${esc(k)}" ${ui.homeCats.includes(k) ? 'checked' : ''}> ${C.TYPES[k].icon} ${esc(C.label(k))}${words}</label>` +
         (c ? `<button class="small ghost" data-del-group="${c.id}" aria-label="${esc(k)} 분류 지우기">✕</button>` : '') + '</div>';
     }).join('');
+    $('setAccount').innerHTML = accountHtml();
+    if (!sb) initAuth();
     const s = liveStatus();
     $('setLive').textContent = live.status === 'ok' ? `연결됨 — ${s.text}` : live.status === 'loading' ? '불러오는 중…' : `연결 안 됨 — 기본 추천만 보여요.${live.error ? ` (${live.error})` : ''}`;
     const ex = readExcluded();
@@ -557,7 +649,7 @@
     $('setHere').textContent = hereStatus === 'insecure' ? '거리 표시: 이 주소(http)에서는 위치를 쓸 수 없어요. https 주소로 배포하면 자동으로 보여요.'
       : hereStatus === 'denied' ? '거리 표시: 위치 권한이 꺼져 있어요. 브라우저 설정에서 이 사이트의 위치를 허용해 주세요.'
       : here ? `거리 표시: 현재 위치 기준 직선거리 (${new Date(here.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })} 위치)` : '거리 표시: 위치를 확인하는 중이에요.';
-    $('setData').textContent = `즐겨찾기 ${saved.length}곳이 이 기기 브라우저에 저장돼 있어요. 휴대폰을 바꾸거나 다른 기기에서 쓰려면 백업 파일을 저장해 옮겨 주세요.`;
+    $('setData').textContent = user ? `즐겨찾기 ${saved.length}곳 · 이 기기와 계정에 함께 저장돼요. 백업 파일도 따로 저장해 둘 수 있어요.` : `즐겨찾기 ${saved.length}곳이 이 기기 브라우저에 저장돼 있어요. 로그인하거나 백업 파일로 다른 기기에 옮길 수 있어요.`;
   }
 
   // ---------- 저장 ----------
@@ -713,7 +805,7 @@
   // 가져온 지도 리스트 링크 기억하기 → 설정에서 [업데이트] 한 번으로 새 장소만 추가
   const LISTS_KEY = 'weekend-lists-v1';
   function readLists() { try { return JSON.parse(localStorage.getItem(LISTS_KEY) || '[]'); } catch { return []; } }
-  function writeLists(v) { try { localStorage.setItem(LISTS_KEY, JSON.stringify(v)); } catch { /* 선택 */ } }
+  function writeLists(v) { try { localStorage.setItem(LISTS_KEY, JSON.stringify(v)); markDirty(); } catch { /* 선택 */ } }
   function rememberList(url, list) {
     const rest = readLists().filter((x) => x.url !== url && !(x.provider === list.provider && x.name === list.listName));
     writeLists([...rest, { url, provider: list.provider, name: list.listName, count: list.places.length, updatedAt: new Date().toISOString() }]);
@@ -839,6 +931,144 @@
     if (persist([])) { render(); toast('모두 지웠어요'); }
   };
 
+  // ---------- 로그인·동기화 (Supabase 이메일 링크) ----------
+  // 즐겨찾기·제외 목록·가져온 리스트·설정을 계정 하나(weekend_data 표의 내 줄)에 통째로 저장해요.
+  // 다른 기기에서 바뀐 게 있으면 받아오고, 이 기기에서 바꾸면 2초 뒤 올려요. 처음 로그인하는 기기는 양쪽을 합쳐요.
+  const SB_URL = String(CONFIG.supabaseUrl || '').replace(/\/+$/, '');
+  const SB_KEY = CONFIG.supabaseAnonKey || '';
+  const SYNC_KEY = 'weekend-sync-v1';
+  const SB_LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';
+  let sb = null;
+  // var: 앱 시작 직후(이 줄보다 먼저) 저장이 일어나도 오류 없이 넘어가게
+  var user = null; var applying = false; var pushTimer = null; var lastUiSig;
+  const sync = { busy: false, err: '', sent: false };
+  const readSync = () => { try { return JSON.parse(localStorage.getItem(SYNC_KEY) || '{}') || {}; } catch { return {}; } };
+  const writeSync = (v) => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(v)); } catch { /* 선택 */ } };
+  const UI_SYNC = ['region', 'mapApp', 'homeCats', 'customGroups'];
+  function snapshot() {
+    return { v: 1, places: saved, excluded: readExcluded(), lists: readLists(), ui: Object.fromEntries(UI_SYNC.map((k) => [k, ui[k]])) };
+  }
+  function applySnapshot(d) {
+    applying = true;
+    try {
+      if (Array.isArray(d.places)) persist(d.places, true);
+      if (Array.isArray(d.excluded)) writeExcluded(d.excluded);
+      if (Array.isArray(d.lists)) writeLists(d.lists);
+      if (d.ui) { for (const k of UI_SYNC) if (d.ui[k] !== undefined) ui[k] = d.ui[k]; saveUi(); applyCustom(); }
+    } finally { applying = false; }
+  }
+  // 두 기기 내용 합치기(같은 곳은 한 번만). 지운 것은 되살아날 수 있어서 처음 로그인할 때·충돌 때만 써요.
+  function mergeSnap(a, b) {
+    const places = [...(a.places || [])];
+    for (const p of b.places || []) if (!places.some((x) => x.id === p.id || C.isDup(x, p))) places.push(p);
+    const excluded = [...(a.excluded || [])];
+    for (const x of b.excluded || []) if (!excluded.some((y) => (y.keys || []).some((k) => (x.keys || []).includes(k)))) excluded.push(x);
+    const lists = [...(a.lists || [])];
+    for (const l of b.lists || []) if (!lists.some((y) => y.url === l.url)) lists.push(l);
+    return { v: 1, places, excluded, lists, ui: { ...(b.ui || {}), ...(a.ui || {}) } };
+  }
+  function uiSig() { return JSON.stringify([ui.region, ui.mapApp, ui.homeCats, ui.customGroups]); }
+  function markDirty() {
+    if (applying || !user) return;
+    writeSync({ ...readSync(), dirty: true });
+    clearTimeout(pushTimer); pushTimer = setTimeout(() => syncNow(), 2000);
+  }
+  async function pull() {
+    const { data, error } = await sb.from('weekend_data').select('data, updated_at').eq('user_id', user.id).maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+  async function push(doc) {
+    const at = new Date().toISOString();
+    const { error } = await sb.from('weekend_data').upsert({ user_id: user.id, data: doc, updated_at: at });
+    if (error) throw error;
+    return at;
+  }
+  async function syncNow(manual) {
+    if (!sb || !user || sync.busy) return;
+    sync.busy = true; sync.err = '';
+    if (route() === 'settings') renderSettings();
+    try {
+      const st = readSync();
+      const remote = await pull();
+      const local = snapshot();
+      const firstHere = st.uid !== user.id;
+      let doc = null; // 올릴 내용(null이면 올릴 것 없음)
+      if (!remote) doc = local;
+      else if (firstHere) { doc = mergeSnap(remote.data || {}, local); applySnapshot(doc); }
+      else if (remote.updated_at > (st.at || '')) {
+        // 다른 기기에서 바뀜: 이 기기에도 안 올린 변경이 있으면 합치고, 없으면 그대로 받아요.
+        if (st.dirty) { doc = mergeSnap(local, remote.data || {}); applySnapshot(doc); } else applySnapshot(remote.data || {});
+        if (!st.dirty) writeSync({ uid: user.id, at: remote.updated_at, dirty: false });
+      } else if (st.dirty || manual) doc = local;
+      if (doc) { const at = await push(doc); writeSync({ uid: user.id, at, dirty: false }); }
+      sync.lastAt = new Date().toISOString();
+      render();
+      if (manual) toast('동기화했어요');
+    } catch (e) {
+      sync.err = String((e && e.message) || e).slice(0, 120);
+      if (manual) toast('동기화하지 못했어요: ' + sync.err);
+    } finally { sync.busy = false; if (route() === 'settings') renderSettings(); }
+  }
+  function loadScript(src) {
+    return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('로그인 도구를 불러오지 못했어요(인터넷 연결 확인)')); document.head.appendChild(s); });
+  }
+  async function initAuth() {
+    if (!SB_URL || !SB_KEY) return;
+    const fromLink = /access_token=|error_description=/.test(location.hash);
+    // 로그인한 적이 없고 메일 링크로 연 것도 아니면, 설정 화면을 열 때까지 로그인 도구를 받지 않아요.
+    if (!fromLink && !localStorage.getItem(SYNC_KEY) && route() !== 'settings' && !initAuth.force) return;
+    if (sb) return;
+    try {
+      await loadScript(SB_LIB);
+      sb = window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' } });
+      sb.auth.onAuthStateChange((ev, session) => {
+        const was = user && user.id;
+        user = session ? session.user : null;
+        if (user && was !== user.id) {
+          if (/access_token=/.test(location.hash)) history.replaceState(null, '', location.pathname + '#settings');
+          toast(`${user.email}(으)로 로그인했어요`);
+          syncNow();
+        }
+        render();
+      });
+      const { data } = await sb.auth.getSession();
+      user = data.session ? data.session.user : null;
+      if (/error_description=/.test(location.hash)) { const m = new URLSearchParams(location.hash.slice(1)).get('error_description'); history.replaceState(null, '', location.pathname + '#settings'); sync.err = m || '로그인 링크가 만료됐어요. 다시 받아 주세요.'; }
+      if (user) { if (!readSync().uid) writeSync({ ...readSync() }); syncNow(); }
+    } catch (e) { sync.err = String(e.message || e); }
+    if (route() === 'settings') renderSettings();
+  }
+  async function sendLink() {
+    const email = $('acEmail').value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('이메일 주소를 확인해 주세요'); return; }
+    initAuth.force = true; await initAuth();
+    if (!sb) { toast(sync.err || '로그인을 쓸 수 없어요'); return; }
+    $('acSend').disabled = true;
+    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
+    $('acSend').disabled = false;
+    if (error) { toast(/rate|seconds/i.test(error.message) ? '메일을 너무 자주 보냈어요. 잠시 뒤 다시 해 주세요.' : '메일을 보내지 못했어요: ' + error.message); return; }
+    sync.sent = email; renderSettings();
+  }
+  async function signOut() {
+    if (!await ask('로그아웃할까요?\n이 기기의 즐겨찾기는 그대로 남고, 계정에 저장된 내용도 지워지지 않아요.', '로그아웃')) return;
+    await sb.auth.signOut();
+    user = null; try { localStorage.removeItem(SYNC_KEY); } catch { /* 선택 */ }
+    render(); toast('로그아웃했어요');
+  }
+  function accountHtml() {
+    if (!SB_URL || !SB_KEY) return '<p class="muted">로그인 기능을 준비 중이에요.</p>';
+    const when = (t) => new Date(t).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    if (user) {
+      const st = readSync();
+      return `<p><b>📧 ${esc(user.email)}</b></p><p class="muted">${sync.busy ? '동기화하는 중…' : sync.err ? '⚠️ ' + esc(sync.err) : st.at ? `즐겨찾기·제외 목록·설정이 계정에 저장돼요 · 마지막 동기화 ${when(st.at)}` : '동기화 준비 중…'}</p>` +
+        '<div class="row wrapline"><button id="acSync">🔄 지금 동기화</button><button class="ghost" id="acOut">로그아웃</button></div>';
+    }
+    if (sync.sent) return `<p><b>📬 ${esc(sync.sent)}</b>(으)로 로그인 링크를 보냈어요.</p><p class="muted">메일의 링크를 이 기기에서 눌러 주세요. 메일이 안 보이면 스팸함도 확인해 주세요.</p><button class="ghost small" id="acAgain">다른 이메일로</button>`;
+    return '<p class="muted">로그인하면 즐겨찾기·제외 목록·설정이 계정에 저장돼서, 휴대폰과 PC에서 같이 쓸 수 있어요. 비밀번호 없이 이메일로 받은 링크를 누르면 돼요.</p>' +
+      `<div class="row" style="gap:6px"><input id="acEmail" type="email" inputmode="email" autocomplete="email" placeholder="이메일 주소" aria-label="이메일 주소"><button class="primary" id="acSend">링크 받기</button></div>${sync.err ? `<p class="muted">⚠️ ${esc(sync.err)}</p>` : ''}`;
+  }
+
   // ---------- 이벤트 ----------
   document.addEventListener('click', (e) => {
     const t = e.target;
@@ -846,6 +1076,10 @@
     let el;
     if ((el = q('[data-close]'))) { el.closest('dialog').close(); return; }
     if (q('[data-open-import]')) { openImport(); return; }
+    if (q('#acSend')) { sendLink(); return; }
+    if (q('#acSync')) { syncNow(true); return; }
+    if (q('#acOut')) { signOut(); return; }
+    if (q('#acAgain')) { sync.sent = false; renderSettings(); return; }
     if ((el = q('[data-unsave]'))) {
       e.stopPropagation();
       const id = el.dataset.unsave;
@@ -872,9 +1106,9 @@
     if ((el = q('[data-hcat]'))) { ui.homeCat = el.dataset.hcat; saveUi(); render(); return; }
     if ((el = q('[data-rcat]'))) { ui.favRecCat = el.dataset.rcat; saveUi(); render(); return; }
     if ((el = q('[data-env]'))) { ui.env = el.dataset.env; saveUi(); render(); return; }
-    if ((el = q('[data-fsort], [data-psort], [data-esort]'))) {
-      const key = el.dataset.fsort ? 'favOrder' : el.dataset.psort ? 'popSort' : 'evSort';
-      const v = el.dataset.fsort || el.dataset.psort || el.dataset.esort;
+    if ((el = q('[data-fsort], [data-psort], [data-esort], [data-foodsort]'))) {
+      const key = el.dataset.fsort ? 'favOrder' : el.dataset.psort ? 'popSort' : el.dataset.foodsort ? 'foodSort' : 'evSort';
+      const v = el.dataset.fsort || el.dataset.psort || el.dataset.esort || el.dataset.foodsort;
       if (v === 'near' && !here) {
         if (!navigator.geolocation || !window.isSecureContext) { toast('이 주소에서는 위치를 쓸 수 없어요(https 주소에서 열어 주세요).'); return; }
         locate(() => { ui[key] = 'near'; saveUi(); render(); }); return;
@@ -885,9 +1119,17 @@
     if (q('[data-back]')) { if (movedInApp) history.back(); else location.hash = '#popular'; return; }
     if ((el = q('[data-esub]'))) { ui.evSub = el.dataset.esub; saveUi(); render(); return; }
     if ((el = q('[data-evwhen]'))) { ui.evWhen = el.dataset.evwhen; saveUi(); render(); return; }
+    if ((el = q('[data-foodsrc]'))) { ui.foodSrc = el.dataset.foodsrc; ui.foodReg = ''; saveUi(); render(); return; }
+    if (q('[data-foodkids]')) { ui.foodKids = !ui.foodKids; saveUi(); render(); return; }
+    if ((el = q('[data-foodkind]'))) { ui.foodKind = el.dataset.foodkind; saveUi(); render(); return; }
+    if ((el = q('[data-foodreg]'))) { ui.foodReg = el.dataset.foodreg; saveUi(); render(); return; }
     if ((el = q('[data-psub]'))) { ui.popSub = el.dataset.psub; saveUi(); render(); return; }
     if ((el = q('[data-mapapp]'))) { ui.mapApp = el.dataset.mapapp; saveUi(); render(); toast(`장소는 ${MAP_APPS[ui.mapApp]}로 열어요`); return; }
     if (q('[data-exclude-shown]')) { excludeShown(); return; }
+    if (q('[data-sel-start]')) { selMode = true; picked.clear(); render(); return; }
+    if (q('[data-sel-done]')) { selMode = false; picked.clear(); render(); return; }
+    if (q('[data-sel-all]')) { const ids = favRows().rows.map((p) => p.id); const all = ids.every((id) => picked.has(id)); ids.forEach((id) => (all ? picked.delete(id) : picked.add(id))); renderSaved(); return; }
+    if (q('[data-sel-del]')) { removePicked(); return; }
     if ((el = q('[data-restore]'))) { restoreExcluded(el.dataset.restore); return; }
     if ((el = q('[data-fsrc]'))) { ui.favSrc = el.dataset.fsrc; ui.favCat = ''; ui.favRegion = ''; saveUi(); render(); return; }
     if ((el = q('[data-fcat]'))) { ui.favCat = el.dataset.fcat; ui.favRegion = ''; saveUi(); render(); return; }
@@ -921,6 +1163,8 @@
       saveUi();
     }
     if (t.dataset.pv !== undefined) updatePvButton();
+    if (t.dataset.pick) { if (t.checked) picked.add(t.dataset.pick); else picked.delete(t.dataset.pick); t.closest('.item').classList.toggle('on', t.checked); selBar(); }
+    if (t.id === 'selCat') setPickedCategory(t.value);
   });
   $('search').oninput = renderSaved;
   $('pick').onclick = doPick;
@@ -958,21 +1202,24 @@
   }
   // 인기 탭은 전국 데이터(지역 파일 7개)를 한 번에 받아 '서울·경기 / 그 외 / 전체'로 나눠 보여줘요.
   const AREAS = ['sg', 'incheon', 'gangwon', 'chung', 'jeolla', 'gyeong', 'jeju'];
-  let nation = { status: 'idle', byArea: {} };
+  let nation = { status: 'idle', byArea: {}, foods: {}, foodNote: {} };
+  const foodPlaces = (data, a) => (data.foods || []).filter((p) => p && p.name)
+    .map((p, i) => ({ ...p, kind: String(p.kind || '').replace('음식점기타', '음식점'), id: 'live-' + (p.id || 'food' + i), origin: 'live', category: '맛집·카페', env: '실내', area: a }));
   async function loadNation(force) {
     if (nation.status === 'loading' || (nation.status === 'ok' && !force)) return;
     if (API === '' && !DATA) return;
-    nation = { status: 'loading', byArea: nation.byArea };
+    nation = { ...nation, status: 'loading' };
     await Promise.all(AREAS.map(async (a) => {
       try {
         const res = DATA ? await fetch(`${DATA}/discover-${a}.json`, { cache: force ? 'reload' : 'default', signal: AbortSignal.timeout(20000) })
           : await fetch(`${API}/discover?region=${a}`, { signal: AbortSignal.timeout(45000) });
         const data = res.status === 200 ? await res.json() : null;
         if (data && Array.isArray(data.places)) nation.byArea[a] = livePlaces(data).map((p) => ({ ...p, area: a }));
+        if (data) { nation.foods[a] = foodPlaces(data, a); nation.foodNote[a] = data.foodNote || ''; }
       } catch { /* 그 지역만 빠짐 */ }
     }));
     nation.status = 'ok';
-    if (route() === 'popular') render();
+    if (['popular', 'food'].includes(route())) render();
   }
   // 행사 모아보기: 전국 행사 파일 하나(data/events.json, 로컬 서버는 /api/events)
   let evData = { status: 'idle', list: [], meta: null };
@@ -1046,7 +1293,12 @@
     navigator.serviceWorker.register('sw.js').catch(() => { /* 오프라인 기능만 빠짐 */ });
   }
 
+  // 다른 기기에서 바꾼 내용: 앱으로 돌아올 때 받아와요.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && user) syncNow(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'acEmail') sendLink(); });
+
   render();
   loadLive();
   locate();
+  initAuth();
 })();

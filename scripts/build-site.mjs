@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkKey, discover, events, mergeDiscover } from '../supabase/functions/_shared/tour.js';
+import { enrichFoods, parseHundred } from '../supabase/functions/_shared/food-extra.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -17,7 +18,11 @@ const KEY = process.env.TOUR_API_KEY || '';
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/+$/, '');
 // 서울·경기·전국은 'sg' 파일 하나로(앱이 지역으로 다시 걸러요). 나머지 지역은 각자 파일.
 export const DATA_REGIONS = ['sg', 'incheon', 'gangwon', 'chung', 'jeolla', 'gyeong', 'jeju'];
-const hide = (s) => (KEY ? String(s).split(KEY).join('***') : String(s));
+// 맛집 보강용 키(없으면 그 단계만 건너뛰어요)
+const EXTRA = { TOUR_API_KEY: KEY, KAKAO_REST_KEY: process.env.KAKAO_REST_KEY || '', NAVER_CLIENT_ID: process.env.NAVER_CLIENT_ID || '', NAVER_CLIENT_SECRET: process.env.NAVER_CLIENT_SECRET || '' };
+const SECRETS = Object.values(EXTRA).filter((v) => v && v.length > 4);
+const hide = (s) => SECRETS.reduce((t, k) => t.split(k).join('***'), String(s));
+const HUNDRED = parseHundred(await fs.readFile(path.join(root, 'data-src', 'hundred-year.csv'), 'utf8').catch(() => ''));
 
 async function previous(region) {
   if (!SITE_URL) return null;
@@ -49,8 +54,15 @@ for (const region of DATA_REGIONS) {
   if (body && !body.places.length && prev?.places?.length) body = null; // 빈 결과로 덮어쓰지 않기
   if (!body && prev && Date.now() - new Date(prev.fetchedAt).getTime() < 30 * 24 * 3600 * 1000) body = prev;
   if (!body) { summary.push(`${region}: 데이터 없음(앱은 기본 추천을 보여줘요)`); continue; }
+  let extra = '';
+  if (body !== prev) {
+    try {
+      const st = await enrichFoods(body, EXTRA, HUNDRED);
+      extra = ` (네이버 ${EXTRA.NAVER_CLIENT_ID ? st.naverErr || st.naverCalls + '회, 체험·놀이 ' + st.spots + '곳' : '키 없음'}, 카카오 위치 ${EXTRA.KAKAO_REST_KEY ? st.kakaoErr || st.kakao + '곳' : '키 없음'}, 모범 ${st.modelErr || st.model + '곳'}, 백년가게 ${HUNDRED.length ? st.hundred + '곳' : '파일 없음'})`;
+    } catch (e) { extra = ` (맛집 보강 실패: ${hide(e.message)})`; }
+  }
   await fs.writeFile(path.join(out, 'data', `discover-${region}.json`), JSON.stringify(body));
-  summary.push(`${region}: ${body.places.length}곳, 위치 ${body.places.filter((p) => p.lat != null).length}곳, ${Math.round((Date.now() - started) / 1000)}초${body === prev ? ' (이전 데이터)' : ''}`);
+  summary.push(`${region}: ${body.places.length}곳, 맛집 ${(body.foods || []).length}곳${extra}, 위치 ${body.places.filter((p) => p.lat != null).length}곳, ${Math.round((Date.now() - started) / 1000)}초${body === prev ? ' (이전 데이터)' : ''}`);
 }
 // 행사 모아보기: 전국 행사 한 파일. 공식 사이트·소개글은 이전 파일에 있으면 다시 부르지 않아요(호출 한도 아끼기).
 {

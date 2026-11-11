@@ -5,6 +5,8 @@
 //  2) 티맵 이동 데이터 연관 관광지 순위     — 관광지별 연관 관광지 TarRlteTarService1 (월 단위 기준월)
 //     시군구마다 '함께 많이 찾은 관광지' 순위에 몇 번, 몇 위로 나왔는지로 점수를 매겨요.
 //  3) 관광정보 등록 장소 (순위 데이터가 없는 지역) — 인기 근거 없음으로 표시
+//  맛집(foods): 2)의 같은 순위에서 '음식' 항목(한식·외국식·간이음식·카페)을 따로 모아요. 프랜차이즈는 빼요.
+//     순위 데이터가 없는 지역은 관광공사에 등록된 음식점(인기 근거 없음).
 // 운영 정보(이용시간·쉬는 날·문의)는 국문 관광정보 detailIntro2 에서 가져와 출처·수정일과 함께 보여줘요.
 
 const APP = 'WeekendOuting';
@@ -41,6 +43,13 @@ const RULES = [
   ['체험·놀이', /키즈|어린이|체험|놀이|상상나라|아쿠아리움|테마파크|랜드|월드|썰매|레일바이크/],
   ['여행지', /궁$|궁궐|성곽|한옥마을|전망대|타워|해변|해수욕장|섬$|폭포|케이블카|스카이워크|둘레길|호수|마을|정원/],
 ];
+// 맛집 목록에서 뺄 프랜차이즈·휴게소
+const CHAIN = /맥도날드|스타벅스|버거킹|롯데리아|KFC|맘스터치|이디야|투썸|빽다방|메가커피|메가MGC|컴포즈|파리바게|뚜레쥬르|던킨|배스킨|베스킨|서브웨이|커피빈|할리스|폴바셋|탐앤탐스|엔제리너스|파스쿠찌|공차|bhc|BBQ|교촌|도미노|피자헛|미스터피자|파파존스|아웃백|빕스|애슐리|본죽|김밥천국|이삭토스트|신전떡볶이|엽기떡볶이|노브랜드|홍콩반점|역전우동|한솥|본도시락|설빙|카페베네|드롭탑|더벤티|매머드|크리스피|휴게소|편의점|GS25|세븐일레븐|이마트|홈플러스|코스트코|롯데마트|DT점|드라이브/i;
+const FOOD_KIND = { FD01: '한식', FD02: '외국식', FD03: '간이음식', FD05: '카페/찻집' };
+const foodName = (raw) => String(raw ?? '').replace(/\s*\[[^\]]*\]\s*/g, ' ').replace('/', ' ').replace(/\s+/g, ' ').trim();
+// 이름만으로 분류가 안 되는 곳(사설 체험장·놀이시설 등)은 티맵 분류로: 테마공원·레저 → 체험·놀이 등
+const CTG_CAT = [[/테마공원|레저스포츠/, '체험·놀이'], [/도시공원|자연관광|자연경관/, '자연·공원'], [/전시시설|역사유적/, '박물관']];
+const NOT_OUTING = /CC$|GC$|골프|컨트리|경마|경륜|스피돔|경정장|볼링|당구|PC방|스크린|피트니스|헬스|요가|필라테스|수영장$|체육센터|특수체육|아트홀|아트센터|공연장|극장|메가박스|CGV|롯데시네마/i;
 const classify = (name) => (RULES.find(([, re]) => re.test(name)) || [])[0] || null;
 
 export class GatewayError extends Error {}
@@ -117,24 +126,31 @@ async function intro(key, contentId, typeId) {
   if (!it) return null;
   const pick = (...k) => strip(k.map((x) => it[x]).find((v) => strip(v)));
   return {
-    usetime: pick('usetime', 'usetimeculture', 'usetimeleports', 'playtime', 'usetimefestival', 'openperiod'),
-    restdate: pick('restdate', 'restdateculture', 'restdateleports'),
-    infocenter: pick('infocenter', 'infocenterculture', 'infocenterleports', 'sponsor1tel'),
-    reservation: pick('reservation', 'reservationlodging', 'bookingplace'),
+    usetime: pick('usetime', 'usetimeculture', 'usetimeleports', 'playtime', 'usetimefestival', 'openperiod', 'opentimefood'),
+    restdate: pick('restdate', 'restdateculture', 'restdateleports', 'restdatefood'),
+    infocenter: pick('infocenter', 'infocenterculture', 'infocenterleports', 'sponsor1tel', 'infocenterfood'),
+    reservation: pick('reservation', 'reservationlodging', 'bookingplace', 'reservationfood'),
     usefee: pick('usefee', 'usetimefestival', 'usefeeleports'),
-    parking: pick('parking', 'parkingculture', 'parkingleports'),
+    parking: pick('parking', 'parkingculture', 'parkingleports', 'parkingfood'),
+    menu: [pick('firstmenu'), pick('treatmenu')].filter(Boolean).join(' / '),
+    kids: String(it.kidsfacility ?? '') === '1' ? '있음' : '',
     babycarriage: pick('chkbabycarriage', 'chkbabycarriageculture', 'chkbabycarriageleports'),
   };
 }
-async function enrich(key, p, prov) {
-  const found = await call(key, KOR, 'searchKeyword2', { keyword: p.name, lDongRegnCd: prov, numOfRows: '5' }).catch(() => []);
-  const hit = found.find((x) => String(x.title ?? '').replace(/\s/g, '') === p.name.replace(/\s/g, '')) ?? found[0];
+async function enrich(key, p, prov, food = false) {
+  const word = food ? p.name.split(' ')[0] : p.name;
+  const found = await call(key, KOR, 'searchKeyword2', { keyword: word, lDongRegnCd: prov, numOfRows: '5', ...(food ? { contentTypeId: '39' } : {}) }).catch(() => []);
+  const same = (x) => String(x.title ?? '').replace(/\s/g, '') === p.name.replace(/\s/g, '');
+  // 음식점은 같은 이름이 흔해서, 이름(지점 포함)이 맞거나 상호가 같고 같은 시군구일 때만 써요.
+  const hit = food ? found.find(same) ?? found.find((x) => String(x.title ?? '').replace(/\s/g, '').startsWith(word) && String(x.addr1 ?? '').includes(p.region.split(' ')[1] || '@')) : found.find(same) ?? found[0];
   if (!hit) return;
   if (hit.addr1) p.region = regionOf(hit.addr1, PROV[prov]) || p.region;
   if (hit.firstimage) p.image = https(hit.firstimage);
   if (hit.mapy && hit.mapx) { p.lat = Number(hit.mapy); p.lng = Number(hit.mapx); }
   const info = await intro(key, String(hit.contentid), String(hit.contenttypeid)).catch(() => null);
   if (info) p.hours = { ...info, source: '한국관광공사 국문 관광정보', updated: dash(hit.modifiedtime) };
+  if (info && info.kids) p.kids = true; // 어린이 놀이방
+  if (hit.addr1 && !p.addr) p.addr = strip(hit.addr1);
 }
 
 async function popular(key, provs) {
@@ -143,12 +159,26 @@ async function popular(key, provs) {
   const jobs = provs.flatMap((p) => (SIGNGU[p] ?? []).map((s) => ({ p, s })));
   const lists = await pool(jobs, 8, async ({ p, s }) => ({ p, items: await call(key, RLTE, 'areaBasedList1', { baseYm: base, areaCd: p, signguCd: s }) }));
   const map = new Map();
+  const food = new Map();
   for (const { p, items } of lists) {
     for (const it of items) {
       const name = String(it.rlteTatsNm ?? '').trim();
       const ctg = String(it.rlteCtgryLclsNm ?? '');
+      if (name && /음식/.test(ctg)) {
+        const kind = String(it.rlteCtgrySclsNm ?? '').replace('음식점기타', '음식점');
+        if (CHAIN.test(name) || /주점|술/.test(kind)) continue;
+        const nm = foodName(name);
+        const k = nm.replace(/\s/g, '');
+        const rank = Number(it.rlteRank ?? 50) || 50;
+        const near = String(it.tAtsNm ?? '').trim();
+        const cur = food.get(k);
+        if (cur) { cur.hits++; cur.best = Math.min(cur.best, rank); if (near) cur.near[near] = (cur.near[near] || 0) + 1; continue; }
+        food.set(k, { name: nm, prov: p, kind, hits: 1, best: rank, near: near ? { [near]: 1 } : {}, region: [PROV[p], String(it.rlteSignguNm ?? '').replace(/시$/, '')].filter(Boolean).join(' ') });
+        continue;
+      }
       if (!name || NOT_FOR_KIDS.test(name) || (ctg && /음식|숙박|쇼핑/.test(ctg))) continue;
-      const category = classify(name);
+      const byCtg = (CTG_CAT.find(([re]) => re.test(String(it.rlteCtgryMclsNm ?? '') + ' ' + String(it.rlteCtgrySclsNm ?? ''))) || [])[1];
+      const category = classify(name) || (NOT_OUTING.test(name) ? null : byCtg);
       if (!category) continue;
       const rank = Number(it.rlteRank ?? 50) || 50;
       const k = name.replace(/\s/g, '');
@@ -173,7 +203,49 @@ async function popular(key, provs) {
     }));
   await pool(places, 6, (pl) => enrich(key, pl, pl._prov)); // 거리·지도 표시용 위치와 운영 정보
   places.forEach((pl) => delete pl._prov);
-  return { places, basis };
+  const foods = [...food.values()]
+    .map((x) => ({ ...x, score: x.hits * 10 + (51 - x.best) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, provs.length > 1 ? 80 : 40)
+    .map((x) => {
+      const near = Object.entries(x.near).sort((a, b) => b[1] - a[1])[0];
+      return {
+        id: 'tfood-' + x.name.replace(/\s/g, ''), name: x.name, region: x.region, kind: x.kind, url: '',
+        note: near ? `‘${near[0]}’ 등에 다녀간 사람들이 함께 많이 찾은 곳이에요.` : '티맵 이동 데이터에서 주변 관광지와 함께 많이 찾은 곳이에요.',
+        popularity: { kind: 'tmap', label: `연관 순위 ${x.hits}회 등장 · 최고 ${x.best}위`, source: '한국관광공사 관광지별 연관 관광지(티맵)', basis, score: x.score },
+        _prov: x.prov,
+      };
+    });
+  await pool(foods, 6, (f) => enrich(key, f, f._prov, true));
+  foods.forEach((f) => delete f._prov);
+  return { places, foods, basis };
+}
+
+// 순위 데이터가 없는 지역의 맛집: 관광공사에 등록된 음식점(사진·위치 있음, 인기 근거 없음)
+async function listedFoods(key, provs) {
+  const out = [];
+  await pool(provs, 4, async (p) => {
+    const items = await call(key, KOR, 'areaBasedList2', { lDongRegnCd: p, contentTypeId: '39', arrange: 'Q', numOfRows: '40' });
+    for (const it of items) {
+      const name = strip(it.title); const kind = FOOD_KIND[it.lclsSystm2];
+      if (!name || !kind || CHAIN.test(name)) continue;
+      out.push({
+        id: 'kfood-' + it.contentid, name, kind, url: '',
+        region: regionOf(it.addr1, PROV[p]), image: https(it.firstimage), lat: Number(it.mapy) || null, lng: Number(it.mapx) || null,
+        note: '한국관광공사 관광정보에 등록된 음식점이에요. (인기 순위 정보 없음)',
+        hours: { usetime: '', restdate: '', infocenter: '', reservation: '', source: '한국관광공사 국문 관광정보', updated: dash(it.modifiedtime) },
+      });
+    }
+  });
+  const top = out.slice(0, 60);
+  // 운영시간·메뉴·어린이 놀이방은 음식점마다 소개정보를 한 번 더 불러요.
+  await pool(top, 6, async (f) => {
+    const info = await intro(key, f.id.replace('kfood-', ''), '39');
+    if (!info) return;
+    f.hours = { ...f.hours, ...info };
+    if (info.kids) f.kids = true;
+  });
+  return top;
 }
 
 async function festivals(key, provs) {
@@ -277,11 +349,13 @@ export async function discover(key, region = 'sg', force = false) {
   const withRank = provs.filter((p) => SIGNGU[p]);
   const rest = provs.filter((p) => !SIGNGU[p]);
   const settle = (pr) => pr.then((v) => ({ ok: true, v }), (e) => ({ ok: false, e }));
-  const [pop, fest, other] = await Promise.all([
-    settle(withRank.length ? popular(key, withRank) : Promise.resolve({ places: [], basis: null })),
+  const [pop, fest, other, otherFood] = await Promise.all([
+    settle(withRank.length ? popular(key, withRank) : Promise.resolve({ places: [], foods: [], basis: null })),
     settle(festivals(key, provs)),
     settle(rest.length ? listed(key, rest) : Promise.resolve([])),
+    settle(rest.length ? listedFoods(key, rest) : Promise.resolve([])),
   ]);
+  const foods = [...(pop.ok ? pop.v.foods || [] : []), ...(otherFood.ok ? otherFood.v : [])];
   const errors = [pop, fest, other].filter((r) => !r.ok).map((r) => String(r.e?.message ?? r.e));
   const places = [...(fest.ok ? fest.v : []), ...(pop.ok ? pop.v.places : []), ...(other.ok ? other.v : [])];
   if (!places.length && errors.length) { const e = new Error(errors.join(' / ')); e.status = 502; throw e; }
@@ -296,6 +370,8 @@ export async function discover(key, region = 'sg', force = false) {
     ].filter(Boolean).join(' · '),
     errors,
     places,
+    foodNote: pop.ok && pop.v.foods && pop.v.foods.length ? `티맵 연관 관광지 순위 ${basis} 기준 음식점` : foods.length ? '한국관광공사 등록 음식점(인기 순위 정보 없음)' : '',
+    foods,
   };
   memo.set(region, { at: Date.now(), body });
   return body;
@@ -315,5 +391,9 @@ export function mergeDiscover(prev, body, maxAgeDays = 7) {
   // 지난 행사(이번 주말과 겹치지 않는 축제)는 이어받지 않아요.
   const w = weekendOf();
   const keep = prev.places.filter((p) => !have.has(key(p)) && !(p.popularity && p.popularity.kind === 'festival' && p.popularity.basis !== `${w.sat.slice(0, 4)}-${w.sat.slice(4, 6)}-${w.sat.slice(6, 8)} 주말`));
-  return { ...body, places: [...places, ...keep], popularityNote: body.popularityNote || prev.popularityNote };
+  const oldFood = new Map((prev.foods || []).map((p) => [key(p), p]));
+  const foods = (body.foods || []).length
+    ? body.foods.map((p) => { const o = oldFood.get(key(p)); return o ? { ...o, ...p, lat: p.lat ?? o.lat, lng: p.lng ?? o.lng, image: p.image || o.image, hours: p.hours || o.hours } : p; })
+    : prev.foods || [];
+  return { ...body, places: [...places, ...keep], popularityNote: body.popularityNote || prev.popularityNote, foods, foodNote: body.foodNote || prev.foodNote || '' };
 }

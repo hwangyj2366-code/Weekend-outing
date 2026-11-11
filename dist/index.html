@@ -98,6 +98,18 @@ main{overflow-x:clip}
 .sortline{margin-bottom:6px}
 .danger{color:#8a1f1f}
 .exlist{max-height:50vh;overflow:auto;margin-top:8px}
+.badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.badges i{font-style:normal;font-size:12px;font-weight:700;background:#eef4e8;color:#3b5a2c;border-radius:999px;padding:1px 8px;white-space:nowrap}
+#setAccount input{flex:1;min-width:0}
+.item.pick{cursor:pointer}
+.item.pick input{width:22px;height:22px;flex:none;accent-color:var(--green)}
+.item.pick.on{border-color:var(--green);background:#f1f7ec}
+#favBulk{gap:6px}
+#favList{padding-bottom:64px}
+.selbar{position:fixed;left:0;right:0;bottom:calc(var(--tab) + env(safe-area-inset-bottom));z-index:31;background:#fffdf5;border-top:1px solid var(--soft);box-shadow:0 -4px 14px #0000000f}
+.selbar .wrap{display:flex;align-items:center;gap:6px;padding:8px 12px}
+.selbar b{white-space:nowrap;margin-right:auto}
+.selbar select{width:auto;max-width:42%;min-height:36px;font-size:14px}
 #setExcluded summary{cursor:pointer;font-weight:700;color:var(--green);min-height:36px;display:flex;align-items:center}
 .grouprow{gap:6px;padding:2px 0}
 .grouprow label{flex:1;min-width:0}
@@ -112,7 +124,7 @@ main{overflow-x:clip}
 .seg button+button{border-left:1px solid var(--line)}
 /* 탭바 */
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#fffdf5f5;backdrop-filter:blur(8px);border-top:1px solid var(--soft);padding-bottom:env(safe-area-inset-bottom)}
-.tabbar .wrap{display:grid;grid-template-columns:repeat(4,1fr);height:var(--tab)}
+.tabbar .wrap{display:grid;grid-template-columns:repeat(5,1fr);height:var(--tab)}
 .tabbar a{display:grid;place-items:center;align-content:center;gap:0;text-decoration:none;color:var(--muted);font-size:13px;font-weight:700}
 .tabbar a span{font-size:23px;line-height:1.1}
 .tabbar a[aria-current=page]{color:var(--green)}
@@ -218,6 +230,18 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
     <p class="muted" style="text-align:center;margin-top:14px;font-size:13px">행사 일정·장소는 바뀔 수 있어요. 가기 전에 행사 사이트에서 꼭 확인해 주세요.</p>
   </div>
 
+  <!-- 맛집 (인기 맛집 + 내 즐겨찾기 맛집) -->
+  <div id="page-food" data-page="food" hidden>
+    <div class="filters">
+      <div class="chips" id="foodSrc" role="group" aria-label="어디서"></div>
+      <div class="chips" id="foodKind" role="group" aria-label="식당·카페"></div>
+    </div>
+    <p class="status" id="foodStatus" role="status"></p>
+    <div id="foodBar" style="margin:6px 0 8px"></div>
+    <div id="foodList"></div>
+    <p class="muted" style="text-align:center;margin-top:14px;font-size:13px">‘인기’는 티맵 이동 데이터에서 주변 관광지와 함께 많이 찾은 순서예요. 영업시간·휴무는 지도에서 꼭 확인해 주세요.</p>
+  </div>
+
   <!-- 즐겨찾기 -->
   <div id="page-saved" data-page="saved" hidden>
     <input id="search" class="search" type="search" placeholder="이름·지역·메모 검색" aria-label="즐겨찾기 검색">
@@ -232,6 +256,10 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
   <!-- 설정 -->
   <div id="page-settings" data-page="settings" class="settings" hidden>
     <div class="box" style="margin-top:14px">
+      <h3>👤 계정</h3>
+      <div id="setAccount"></div>
+    </div>
+    <div class="box">
       <h3>📍 기본 지역</h3>
       <p class="muted">홈 추천과 ‘한 곳 골라줘’에 쓰여요. 지역을 모르는 즐겨찾기는 항상 포함돼요.</p>
       <select id="setRegion"></select>
@@ -284,9 +312,12 @@ label.field{display:grid;gap:4px;margin:10px 0;font-size:15px}
   </div>
 </main>
 
+<!-- 즐겨찾기 여러 곳 선택 막대 -->
+<div id="selBar" class="selbar" hidden></div>
 <nav class="tabbar" aria-label="화면 이동"><div class="wrap">
   <a href="#home" data-tab="home"><span>🏠</span>홈</a>
   <a href="#popular" data-tab="popular"><span>🔥</span>인기</a>
+  <a href="#food" data-tab="food"><span>🍽</span>맛집</a>
   <a href="#saved" data-tab="saved"><span>⭐</span>즐겨찾기 <em class="badge-n" id="tabCount" hidden></em></a>
   <a href="#settings" data-tab="settings"><span>⚙️</span>설정</a>
 </div></nav>
