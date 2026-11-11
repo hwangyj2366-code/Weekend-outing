@@ -1139,63 +1139,88 @@
   // 가입·로그인: 이메일 + 비밀번호. 가족마다 각자 가입하면 즐겨찾기가 계정별로 따로 저장돼요.
   const authErr = (m) => (/Invalid login/i.test(m) ? '이메일 또는 비밀번호가 맞지 않아요.'
     : /already (been )?registered/i.test(m) ? '이미 가입한 이메일이에요. [로그인]을 눌러 주세요.'
+      : /token.*(expired|invalid)|otp/i.test(m) ? '코드가 맞지 않거나 시간이 지났어요. 코드를 다시 받아 주세요.'
+      : /different from the old|same password/i.test(m) ? '지금 비밀번호와 다른 비밀번호로 해 주세요.'
       : /not confirmed/i.test(m) ? '가입 확인 메일의 링크를 먼저 눌러 주세요.'
         : /sending.*email|confirmation email/i.test(m) ? '확인 메일을 보내지 못했어요. 잠시 뒤 다시 해 주세요(계속되면 관리자에게 알려 주세요).'
         : /rate|seconds/i.test(m) ? '너무 자주 시도했어요. 잠시 뒤 다시 해 주세요.'
           : /password/i.test(m) && /least|weak|short/i.test(m) ? '비밀번호를 6자 이상으로 해 주세요.' : m);
   // ---------- 로그인 화면 ----------
   // 처음 열면 로그인 화면부터: 계정이 없으면 회원가입(이메일 확인) → 로그인. 즐겨찾기는 계정마다 따로예요.
-  var gate = { mode: 'in', checked: false, err: '', busy: false, sent: '', email: '' };
+  var gate = { mode: 'in', checked: false, err: '', busy: false, sent: '', email: '', note: '', recovering: false };
   const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
   // 전에 이 기기에서 로그인했으면, 인터넷이 안 돼 확인을 못 해도 일단 앱을 보여줘요.
   const knownHere = () => !!readSync().uid;
+  // 화면 종류: in 로그인 / up 회원가입 / reset 비밀번호 찾기(이메일) / reset2 메일로 받은 코드 + 새 비밀번호
+  const GATE_GO = { in: '로그인', up: '회원가입', reset: '재설정 코드 받기', reset2: '새 비밀번호로 바꾸기' };
   function showGate() {
-    const on = !!(SB_URL && SB_KEY) && !user && (gate.checked || !knownHere());
+    const on = !!(SB_URL && SB_KEY) && (!user || gate.recovering) && (gate.checked || !knownHere());
     $('gate').hidden = !on;
     document.body.classList.toggle('gated', on);
     if (!on) return;
-    const up = gate.mode === 'up';
+    const m = gate.mode; const up = m === 'up';
     if (gate.sent) {
       $('gateBody').innerHTML = `<div class="gatemsg"><p>📬 <b>${esc(gate.sent)}</b>(으)로 가입 확인 메일을 보냈어요.</p><p class="muted">메일의 링크를 누른 뒤 로그인해 주세요. 메일이 안 보이면 스팸함도 확인해 주세요.</p></div><button class="primary big" id="gBack">로그인하러 가기</button>`;
       return;
     }
-    if ($('gateForm') && $('gateForm').dataset.mode === gate.mode) { gateMsg(); return; }
-    $('gateBody').innerHTML = `<form id="gateForm" data-mode="${gate.mode}" novalidate>
-      <label>이메일<input id="gEmail" type="email" inputmode="email" autocomplete="email" value="${esc(gate.email)}" required></label>
-      <label>비밀번호<input id="gPw" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" placeholder="6자 이상" required></label>
-      ${up ? '<label>비밀번호 확인<input id="gPw2" type="password" autocomplete="new-password" placeholder="한 번 더" required></label>' : ''}
-      <p class="gerr" id="gErr" role="alert"></p>
-      <button class="primary big" id="gGo" type="submit">${up ? '회원가입' : '로그인'}</button>
-    </form>
-    <button class="linkbtn" id="gToggle" type="button">${up ? '이미 계정이 있으신가요? <b>로그인</b>' : '계정이 없으신가요? <b>회원가입</b>'}</button>
-    ${up ? '<p class="muted small">가입하면 확인 메일이 가요. 즐겨찾기·가져온 지도 리스트·설정은 계정마다 따로 저장돼요.</p>' : ''}`;
+    if ($('gateForm') && $('gateForm').dataset.mode === m) { gateMsg(); return; }
+    const emailIn = `<label>이메일<input id="gEmail" type="email" inputmode="email" autocomplete="email" value="${esc(gate.email)}" required></label>`;
+    const fields = m === 'reset' ? emailIn
+      : m === 'reset2' ? `<p class="muted small" style="margin:0"><b>${esc(gate.email)}</b>(으)로 보낸 메일의 숫자 코드를 넣어 주세요.</p>` +
+        '<label>재설정 코드<input id="gCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="숫자 코드" required></label>' +
+        '<label>새 비밀번호<input id="gPw" type="password" autocomplete="new-password" placeholder="6자 이상" required></label>' +
+        '<label>새 비밀번호 확인<input id="gPw2" type="password" autocomplete="new-password" placeholder="한 번 더" required></label>'
+        : emailIn + `<label>비밀번호<input id="gPw" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" placeholder="6자 이상" required></label>` +
+          (up ? '<label>비밀번호 확인<input id="gPw2" type="password" autocomplete="new-password" placeholder="한 번 더" required></label>' : '');
+    const links = m === 'in' ? '<button class="linkbtn" data-gmode="up" type="button">계정이 없으신가요? <b>회원가입</b></button><button class="linkbtn" data-gmode="reset" type="button">비밀번호를 잊으셨나요?</button>'
+      : m === 'up' ? '<button class="linkbtn" data-gmode="in" type="button">이미 계정이 있으신가요? <b>로그인</b></button>'
+        : `${m === 'reset2' ? '<button class="linkbtn" data-gmode="reset" type="button">코드를 다시 받을래요</button>' : ''}<button class="linkbtn" data-gmode="in" type="button">‹ 로그인으로 돌아가기</button>`;
+    $('gateBody').innerHTML = `${m.startsWith('reset') ? '<h2 class="gsub">🔑 비밀번호 찾기</h2>' : ''}<form id="gateForm" data-mode="${m}" novalidate>${fields}
+      <p class="gnote" id="gNote"></p><p class="gerr" id="gErr" role="alert"></p>
+      <button class="primary big" id="gGo" type="submit">${GATE_GO[m]}</button>
+    </form><div class="glinks">${links}</div>
+    ${up ? '<p class="muted small">가입하면 확인 메일이 가요. 즐겨찾기·가져온 지도 리스트·설정은 계정마다 따로 저장돼요.</p>' : ''}
+    ${m === 'reset' ? '<p class="muted small">가입한 이메일로 숫자 코드를 보내 드려요.</p>' : ''}`;
     gateMsg();
   }
   function gateMsg() {
     if ($('gErr')) $('gErr').textContent = gate.err || '';
-    if ($('gGo')) { $('gGo').disabled = gate.busy; $('gGo').textContent = gate.busy ? '잠시만요…' : gate.mode === 'up' ? '회원가입' : '로그인'; }
+    if ($('gNote')) $('gNote').textContent = gate.note || '';
+    if ($('gGo')) { $('gGo').disabled = gate.busy; $('gGo').textContent = gate.busy ? '잠시만요…' : GATE_GO[gate.mode]; }
   }
+  function setGateMode(m) { gate.mode = m; gate.err = ''; gate.note = ''; showGate(); }
   async function doAuth() {
     const mode = gate.mode;
-    const email = $('gEmail').value.trim(); const pw = $('gPw').value;
-    gate.email = email;
-    gate.err = !EMAIL_RE.test(email) ? '올바른 이메일 주소를 입력해 주세요.' : pw.length < 6 ? '비밀번호는 6자 이상이어야 해요.'
-      : mode === 'up' && $('gPw2').value !== pw ? '비밀번호 확인이 달라요.' : '';
+    const val = (id) => ($(id) ? $(id).value : '');
+    const email = mode === 'reset2' ? gate.email : val('gEmail').trim(); const pw = val('gPw'); const code = val('gCode').replace(/\s/g, '');
+    gate.email = email; gate.note = '';
+    gate.err = !EMAIL_RE.test(email) ? '올바른 이메일 주소를 입력해 주세요.'
+      : mode === 'reset2' && !/^\d{6,10}$/.test(code) ? '메일로 받은 숫자 코드를 넣어 주세요.'
+        : mode !== 'reset' && pw.length < 6 ? '비밀번호는 6자 이상이어야 해요.'
+          : (mode === 'up' || mode === 'reset2') && val('gPw2') !== pw ? '비밀번호 확인이 달라요.' : '';
     if (gate.err) { gateMsg(); return; }
     gate.busy = true; gateMsg();
     await initAuth();
     if (!sb) { gate.busy = false; gate.err = sync.err || '로그인을 쓸 수 없어요(인터넷 연결 확인)'; gateMsg(); return; }
     let res;
     try {
-      res = mode === 'up' ? await sb.auth.signUp({ email, password: pw, options: { emailRedirectTo: location.origin + location.pathname } })
-        : await sb.auth.signInWithPassword({ email, password: pw });
+      if (mode === 'up') res = await sb.auth.signUp({ email, password: pw, options: { emailRedirectTo: location.origin + location.pathname } });
+      else if (mode === 'in') res = await sb.auth.signInWithPassword({ email, password: pw });
+      else if (mode === 'reset') res = await sb.auth.resetPasswordForEmail(email);
+      else {
+        // 코드 확인(이때 로그인돼요) → 새 비밀번호 저장. 끝날 때까지 로그인 화면을 그대로 둬요.
+        gate.recovering = true;
+        res = await sb.auth.verifyOtp({ email, token: code, type: 'recovery' });
+        if (!res.error) res = await sb.auth.updateUser({ password: pw });
+      }
     } catch (e) { res = { error: e }; }
     gate.busy = false;
-    if (res.error) gate.err = authErr(String(res.error.message || res.error));
-    // 이미 가입한 이메일로 다시 가입하면 Supabase는 오류 대신 빈 계정을 돌려줘요
-    else if (mode === 'up' && res.data.user && Array.isArray(res.data.user.identities) && !res.data.user.identities.length) gate.err = '이미 가입한 이메일이에요. 로그인해 주세요.';
+    if (res.error) { gate.err = authErr(String(res.error.message || res.error)); gateMsg(); return; }
+    if (mode === 'up' && res.data.user && Array.isArray(res.data.user.identities) && !res.data.user.identities.length) gate.err = '이미 가입한 이메일이에요. 로그인해 주세요.';
     else if (mode === 'up' && !res.data.session) gate.sent = email;
-    if (!user) showGate();
+    else if (mode === 'reset') { setGateMode('reset2'); gate.note = '📬 메일을 보냈어요. 스팸함도 확인해 주세요.'; gateMsg(); return; }
+    else if (mode === 'reset2') { gate.recovering = false; gate.mode = 'in'; toast('비밀번호를 바꿨어요'); }
+    showGate();
   }
   async function signOut() {
     if (!await ask('로그아웃할까요?\n즐겨찾기는 계정에 그대로 있고, 이 기기에서는 비워져요. 다시 로그인하면 돌아와요.', '로그아웃')) return;
@@ -1229,8 +1254,8 @@
     if (q('[data-open-import]')) { openImport(); return; }
     if (q('#acSync')) { syncNow(true); return; }
     if (q('#acOut')) { signOut(); return; }
-    if (q('#gToggle')) { gate.mode = gate.mode === 'up' ? 'in' : 'up'; gate.err = ''; showGate(); return; }
-    if (q('#gBack')) { gate.sent = ''; gate.mode = 'in'; gate.err = ''; showGate(); return; }
+    if ((el = q('[data-gmode]'))) { setGateMode(el.dataset.gmode); return; }
+    if (q('#gBack')) { gate.sent = ''; setGateMode('in'); return; }
     if ((el = q('[data-unsave]'))) {
       e.stopPropagation();
       const id = el.dataset.unsave;
