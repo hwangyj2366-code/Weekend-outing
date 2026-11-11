@@ -1140,6 +1140,7 @@
   const authErr = (m) => (/Invalid login/i.test(m) ? '이메일 또는 비밀번호가 맞지 않아요.'
     : /already (been )?registered/i.test(m) ? '이미 가입한 이메일이에요. [로그인]을 눌러 주세요.'
       : /not confirmed/i.test(m) ? '가입 확인 메일의 링크를 먼저 눌러 주세요.'
+        : /sending.*email|confirmation email/i.test(m) ? '확인 메일을 보내지 못했어요. 잠시 뒤 다시 해 주세요(계속되면 관리자에게 알려 주세요).'
         : /rate|seconds/i.test(m) ? '너무 자주 시도했어요. 잠시 뒤 다시 해 주세요.'
           : /password/i.test(m) && /least|weak|short/i.test(m) ? '비밀번호를 6자 이상으로 해 주세요.' : m);
   // ---------- 로그인 화면 ----------
