@@ -98,5 +98,5 @@ npm start
 
 ## 맛집·인기 보강 키(선택)
 
-GitHub Secrets / `.env.local`: `KAKAO_REST_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` (없으면 그 단계만 건너뛰어요). 네이버 키가 있으면 시군구마다 키즈카페·실내놀이터·체험농장·승마체험·실내동물원도 리뷰 많은 순으로 인기에 더해요.
+GitHub Secrets / `.env.local`: `KAKAO_REST_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` (없으면 그 단계만 건너뛰어요). 네이버 키는 개발자센터가 아니라 네이버 클라우드 NAVER API HUB에서 발급해요(2026년부터 검색 API 신규 발급이 옮겨짐). 네이버 키가 있으면 시군구마다 키즈카페·실내놀이터·체험농장·승마체험·실내동물원도 리뷰 많은 순으로 인기에 더해요.
 모범음식점은 공공데이터포털에서 ‘행정안전부_모범음식점정보 조회서비스’ 활용신청(같은 TOUR_API_KEY). 백년가게는 `data-src/hundred-year.csv`.
