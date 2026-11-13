@@ -161,6 +161,13 @@ assert.equal(C.distanceKm(cityHall, { name: '위치 없음' }), null);
 assert.deepEqual(C.byDistance([lego, { name: '위치 없음' }, gwacheon], cityHall).map((p) => p.name), ['국립과천과학관', '레고랜드 코리아', '위치 없음']);
 assert.equal(C.infer('롯데월드몰'), '관광·쇼핑');
 assert.equal(C.infer('롯데월드 어드벤처'), '체험·놀이');
+assert.equal(C.infer('쌤쌤쌤 롯데월드몰점'), '맛집·카페'); // 지점 이름의 '월드'로 체험·놀이가 되지 않게
+assert.equal(C.infer('하남나무고아원'), '자연·공원');
+assert.equal(C.inferEnv('농협경제지주안성팜랜드', C.infer('농협경제지주안성팜랜드')), '야외');
+assert.equal(C.inferEnv('에버랜드', '체험·놀이'), '야외');
+assert.equal(C.inferEnv('헬로키티아일랜드', '체험·놀이'), '실내');
+assert.equal(C.refreshAuto({ name: '쌤쌤쌤 롯데월드몰점', category: '체험·놀이', env: '실내' }).category, '맛집·카페');
+assert.equal(C.refreshAuto({ name: '쌤쌤쌤 롯데월드몰점', category: '체험·놀이', env: '실내', manual: true }).category, '체험·놀이');
 ok('현재 위치 기준 직선거리, 가까운 순(위치 없는 곳은 뒤로), 쇼핑몰은 나들이에서 제외');
 
 console.log(`\n모든 확인 통과 (${n}개)`);

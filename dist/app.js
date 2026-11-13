@@ -800,7 +800,7 @@
     if (ui.favRecCat === g.label) ui.favRecCat = '';
     if (ui.favCat === g.label) { ui.favCat = ''; ui.favRegion = ''; }
     applyCustom();
-    if (n) persist(saved.map((p) => { if (p.category !== g.label) return p; const c = C.infer(p.name, p.note); return { ...p, category: c, env: C.TYPES[c].env, manual: false }; }));
+    if (n) persist(saved.map((p) => { if (p.category !== g.label) return p; const c = C.infer(p.name, p.note); return { ...p, category: c, env: C.inferEnv(p.name, c), manual: false }; }));
     saveUi(); render(); toast(`‘${g.label}’ 분류를 지웠어요`);
   }
   function openEdit(id) {
@@ -1037,7 +1037,7 @@
   function applySnapshot(d) {
     applying = true;
     try {
-      if (Array.isArray(d.places)) persist(d.places, true);
+      if (Array.isArray(d.places)) persist(d.places.map(C.refreshAuto), true);
       if (Array.isArray(d.excluded)) writeExcluded(d.excluded);
       if (Array.isArray(d.lists)) writeLists(d.lists);
       if (d.ui) { for (const k of UI_SYNC) if (d.ui[k] !== undefined) ui[k] = d.ui[k]; saveUi(); applyCustom(); }
@@ -1376,7 +1376,7 @@
       // 앱의 분류 규칙을 먼저 적용해요(시장·몰 등은 '기타'가 되어 나들이 추천에서 빠져요).
       const mine = C.infer(p.name);
       const category = mine !== '기타' ? mine : C.TYPES[p.category] ? p.category : mine;
-      return { ...p, id: 'live-' + (p.id || i), origin: 'live', category, env: C.TYPES[category].env || p.env || '' };
+      return { ...p, id: 'live-' + (p.id || i), origin: 'live', category, env: C.inferEnv(p.name, category) || p.env || '' };
     });
   }
   // 인기 탭은 전국 데이터(지역 파일 7개)를 한 번에 받아 '서울·경기 / 그 외 / 전체'로 나눠 보여줘요.

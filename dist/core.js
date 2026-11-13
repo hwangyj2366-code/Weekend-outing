@@ -51,7 +51,7 @@
     ['숙소·펜션', /펜션|호텔|리조트|모텔|민박|게스트하우스|풀빌라|스테이|숙박|hotel|resort|pension|hostel/i],
     ['축제·행사', /축제|페스티벌|박람회|festival/i],
     ['관광·쇼핑', /몰$|아울렛|백화점|면세점|쇼핑센터/], // '롯데월드몰'처럼 놀이 단어가 섞인 쇼핑몰을 먼저 걸러요
-    ['자연·공원', /공원|수목원|식물원|동물원|휴양림|숲|생태|습지|계곡|농장|목장|park|zoo|arboretum|forest/i],
+    ['자연·공원', /공원|수목원|식물원|동물원|휴양림|숲|생태|습지|계곡|농장|목장|농원|팜랜드|나무고아원|park|zoo|arboretum|forest|farm/i],
     ['체험·놀이', /키즈|어린이|체험|놀이|상상나라|아쿠아|수족관|워터파크|마법학교|치즈학교|테마파크|랜드|월드|트램폴린|방방|kids|aquarium|playground/i],
     ['맛집·카페', /음식점|식당|맛집|카페|커피|디저트|베이커리|빵|국밥|냉면|갈비|고기|치킨|피자|분식|횟집|레스토랑|면옥|막국수|떡볶이|브런치|한식|중식|일식|양식|restaurant|cafe|coffee|bakery|bistro/i],
     // 아이 나들이와 거리가 먼 관광지는 '기타'의 시장·거리·쇼핑으로 (워터파크·찜질방 같은 체험은 위에서 먼저 걸러져요)
@@ -81,11 +81,50 @@
       CUSTOM.push({ id: c.id, label: name, words: (c.words || []).map((w) => String(w).trim()).filter(Boolean) });
     }
   }
-  function infer(...texts) {
-    const s = texts.filter(Boolean).join(' ');
-    for (const c of CUSTOM) if (c.words.some((w) => s.includes(w))) return c.label;
+  // 지점 이름("쌤쌤쌤 롯데월드몰점")의 '롯데월드몰점'은 가게가 있는 장소일 뿐이라, 분류할 때는 떼고 봐요.
+  // 그래서 '월드'를 보고 체험·놀이로 넣지 않아요. 다른 규칙에 안 걸리는 지점 가게는 대부분 음식점·카페예요.
+  const BRANCH = /\s+[^\s]*[가-힣A-Za-z0-9]점$/;
+  // 네이버 업종(tags)이 음식점·숙박 같은 가게 종류면 이름보다 먼저 믿어요.
+  const SHOP_TAG = [['맛집·카페', RULES.find(([c]) => c === '맛집·카페')[1]], ['숙소·펜션', RULES.find(([c]) => c === '숙소·펜션')[1]]];
+  const SHOP_TAG_EXTRA = /^(한식|양식|중식|일식|분식|아시아음식|술집|요리주점|이탈리아음식|프랑스음식|패밀리레스토랑|뷔페|오리요리|육류,고기요리|돼지고기구이|소고기구이|해물,생선요리|칼국수,만두|백반,가정식)/;
+  function infer(name, note, tags) {
+    const all = [name, note, tags].filter(Boolean).join(' ');
+    for (const c of CUSTOM) if (c.words.some((w) => all.includes(w))) return c.label;
+    const t = String(tags || '').trim();
+    if (t && !/키즈|놀이|체험/.test(t)) {
+      if (SHOP_TAG_EXTRA.test(t)) return '맛집·카페';
+      for (const [cat, re] of SHOP_TAG) if (re.test(t)) return cat;
+    }
+    const n = String(name || '');
+    const branch = BRANCH.test(n);
+    const s = [branch ? n.replace(BRANCH, '') : n, note, tags].filter(Boolean).join(' ');
     for (const [cat, re] of RULES) if (re.test(s)) return cat;
+    return branch ? '맛집·카페' : '기타';
+  }
+  // 실내·야외: 분류 기본값만 쓰면 체험농장·테마파크까지 '실내'가 돼서, 이름으로 먼저 봐요.
+  const INDOOR = /실내|키즈|스파|찜질|사우나|카페|아쿠아|수족관|체험관|센터|방방|트램폴린|볼링|몰$|백화점|도서관|극장|전시|박물관|미술관|과학관|indoor/i;
+  const OUTDOOR = /야외|농장|목장|농원|팜|나무|숲|공원|정원|수목원|동물원|사파리|테마파크|(?<![일그])랜드($|\s)|썰매|레일바이크|승마|짚라인|루지|캠핑|해변|해수욕장|계곡|폭포|산$|케이블카|스카이워크|전망대|마을$|outdoor|farm|park|zoo/i;
+  function inferEnv(name, category) {
+    const base = (TYPES[category] && TYPES[category].env) || '';
+    if (['맛집·카페', '숙소·펜션', '박물관', '과학관', '축제·행사', '캠핑장'].includes(category)) return base;
+    const n = String(name || '');
+    if (INDOOR.test(n)) return '실내';
+    if (OUTDOOR.test(n)) return '야외';
+    return base;
+  }
+  // 예전 규칙(2026-11-13 전)으로 이름만 보고 정한 분류·실내야외는 새 규칙으로 고쳐요. 직접 고른 분류(manual)는 그대로 둬요.
+  const OLD_NATURE = /공원|수목원|식물원|동물원|휴양림|숲|생태|습지|계곡|농장|목장|park|zoo|arboretum|forest/i;
+  function oldInfer(name, note) {
+    const s = [name, note].filter(Boolean).join(' ');
+    for (const [cat, re] of RULES) if ((cat === '자연·공원' && re.source.includes('나무고아원') ? OLD_NATURE : re).test(s)) return cat;
     return '기타';
+  }
+  function refreshAuto(p) {
+    if (!p || p.manual || !TYPES[p.category]) return p;
+    let { category, env } = p;
+    if (oldInfer(p.name, p.note) === category) { const c = infer(p.name, p.note); if (c !== '기타') category = c; }
+    if (!env || env === TYPES[p.category].env) env = inferEnv(p.name, category);
+    return category === p.category && env === p.env ? p : { ...p, category, env };
   }
 
   const REGIONS = [
@@ -186,7 +225,7 @@
       name,
       url: validUrl(p.url),
       category,
-      env: ['실내', '야외'].includes(p.env) ? p.env : TYPES[category].env,
+      env: ['실내', '야외'].includes(p.env) ? p.env : inferEnv(name, category),
       region: String(p.region || '').trim(),
       note: String(p.note || '').trim().slice(0, 500),
       list: p.list || '',
@@ -203,9 +242,9 @@
     try {
       const v2 = JSON.parse(read(STORAGE_KEY) || 'null');
       if (v2 && Array.isArray(v2.places)) {
-        const places = v2.places.map(makePlace);
+        const places = v2.places.map((p) => refreshAuto(makePlace(p)));
         // 없어진 분류(예전 '여행지'·'키즈카페')는 makePlace가 이름으로 다시 분류해요 → 바뀌었으면 다시 저장
-        const changed = places.some((p, i) => p.category !== v2.places[i].category);
+        const changed = places.some((p, i) => p.category !== v2.places[i].category || p.env !== v2.places[i].env);
         return { places, migrated: changed };
       }
     } catch { /* 손상된 v2는 무시하고 v1을 시도 */ }
@@ -447,7 +486,7 @@
 
   const api = {
     STORAGE_KEY, LEGACY_KEY, SETTINGS_KEY, LIVE_CACHE_KEY, TYPES, GROUPS, OUTING, REGIONS, SEED,
-    label, shortLabel, categories, groupOf, groupInfo, infer, setCustom, regionFromAddress, inRegion, validUrl, canonicalUrl, mapSource, normName, isDup,
+    label, shortLabel, categories, groupOf, groupInfo, infer, inferEnv, refreshAuto, setCustom, regionFromAddress, inRegion, validUrl, canonicalUrl, mapSource, normName, isDup,
     makePlace, loadPlaces, savePlaces, mergeImport, previewImport, exportBackup, parseBackup,
     parseCsv, fromCsv, fromGeoJson, fromShareText, filterPlaces, discoverPool, pickOne, shuffle, regionToken, distanceKm, formatKm, byDistance,
   };
