@@ -340,6 +340,55 @@ async function listed(key, provs) {
   return out.slice(0, 40);
 }
 
+// 이번 주말 붐빔 예상 — 관광지 집중률 방문자 추이 예측(KT 이동통신 데이터, 관광지마다 가장 붐비는 때 = 100)
+// 공공데이터포털에서 이 API 활용신청이 따로 필요해요(안 했으면 'NOT_REGISTERED' 오류 → 그 단계만 건너뜀).
+// 시군구 코드표(SIGNGU)가 있는 서울·경기·인천만 불러요. 같은 이름의 장소에 crowd를 붙이고,
+// 이번 주말 집중률이 높은(70 이상) 아이 나들이 장소는 목록에 없으면 새로 더해요.
+const CNCTR = 'https://apis.data.go.kr/B551011/TatsCnctrRateService';
+export async function crowd(key, region, places) {
+  const provs = (REGION[region] ?? []).filter((p) => SIGNGU[p]);
+  if (!key || !provs.length) return { marked: 0, added: [], err: '' };
+  const w = weekendOf();
+  const jobs = provs.flatMap((p) => SIGNGU[p].map((s) => ({ p, s })));
+  const spots = new Map();
+  let err = '';
+  await pool(jobs, 6, async ({ p, s }) => {
+    if (err) return;
+    const items = await call(key, CNCTR, 'tatsCnctrRatedList', { areaCd: p, signguCd: s, numOfRows: '1000' })
+      .catch((e) => { if (e instanceof GatewayError) err = e.message; return []; });
+    for (const it of items) {
+      const name = strip(it.tAtsNm); const day = String(it.baseYmd ?? '');
+      if (!name || (day !== w.sat && day !== w.sun)) continue;
+      const k = name.replace(/\s/g, '');
+      const cur = spots.get(k) || { name, prov: p, region: [PROV[p], String(it.signguNm ?? '').replace(/시$/, '')].filter(Boolean).join(' '), rate: 0 };
+      cur.rate = Math.max(cur.rate, Math.round(Number(it.cnctrRate) || 0));
+      spots.set(k, cur);
+    }
+  });
+  if (err && !spots.size) return { marked: 0, added: [], err: /NOT_REGISTERED|30 /.test(err) ? '활용신청 필요' : err.slice(0, 60) };
+  const byName = new Map(places.map((pl) => [String(pl.name).replace(/\s/g, ''), pl]));
+  let marked = 0; const added = [];
+  for (const [k, x] of spots) {
+    if (x.rate < 40) continue;
+    const crowdInfo = { rate: x.rate, label: `이번 주말 붐빔 예상 ${x.rate}% (가장 붐비는 때 = 100)`, basis: `${w.sat.slice(4, 6)}/${w.sat.slice(6)} 주말` };
+    const hit = byName.get(k);
+    if (hit) { hit.crowd = crowdInfo; if (hit.popularity && x.rate >= 70) hit.popularity.score += 10; marked++; continue; }
+    const category = classify(x.name);
+    if (x.rate < 70 || !category || NOT_FOR_KIDS.test(x.name) || NOT_OUTING.test(x.name)) continue;
+    added.push({
+      id: 'cnctr-' + k, name: x.name, region: x.region, category, env: ENV[category], url: '', crowd: crowdInfo,
+      note: '휴대폰 이동 데이터로 예측한 이번 주말 방문 집중률이 높은 곳이에요.',
+      popularity: { kind: 'crowd', label: crowdInfo.label, source: '한국관광공사 관광지 집중률 예측(KT 이동통신)', basis: crowdInfo.basis, score: 40 + Math.round(x.rate / 5) },
+      _prov: x.prov,
+    });
+  }
+  added.sort((a, b) => b.crowd.rate - a.crowd.rate);
+  const top = added.slice(0, 20);
+  await pool(top, 6, (pl) => enrich(key, pl, pl._prov)); // 위치·운영 정보
+  top.forEach((pl) => delete pl._prov);
+  return { marked, added: top, err: '' };
+}
+
 const memo = new Map();
 export async function discover(key, region = 'sg', force = false) {
   if (!key) { const e = new Error('TOUR_API_KEY가 설정되지 않았어요.'); e.status = 503; throw e; }

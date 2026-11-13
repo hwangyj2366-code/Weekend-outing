@@ -155,23 +155,22 @@ export async function enrichFoods(body, env, hundredShops) {
   hundredBadges(foods, hundredShops, stat);
   body.foods = foods;
   stat.spots = await naverSpots(body, env.NAVER_CLIENT_ID, env.NAVER_CLIENT_SECRET, stat);
+  stat.buzz = await naverBuzz(body, env.NAVER_CLIENT_ID, env.NAVER_CLIENT_SECRET, stat);
   return stat;
 }
 
 // 인기 나들이 보강: 사설 체험·놀이 시설(키즈카페·실내동물원·체험농장·승마 등)은 공공데이터에 거의 없어서
 // 네이버 지역 검색 '시군구 + 검색어'를 리뷰 많은 순으로 5곳씩 받아 인기 장소에 더해요. (네이버 키가 있을 때만)
 const SPOT_WORDS = [['키즈카페', '체험·놀이', '실내'], ['실내놀이터', '체험·놀이', '실내'], ['체험농장', '자연·공원', '야외'], ['승마체험', '체험·놀이', '야외'], ['실내동물원', '체험·놀이', '실내']];
+// 요즘 뜨는 곳: 팝업·전시·체험전처럼 공공데이터에 없는 '요즘' 장소. 큰 시군구(장소가 많은 순 30곳)만 찾아요.
+const TREND_WORDS = [['팝업스토어', '체험·놀이', '실내'], ['아이랑 전시', '박물관', '실내'], ['어린이 체험전', '체험·놀이', '실내'], ['아이랑 가볼만한곳', '체험·놀이', '']];
 const NOT_SPOT = /술집|주점|호프|노래|PC방|당구|스크린|골프|헬스|필라테스|요가|학원|병원|의원|부동산|모텔|호텔/;
 export async function naverSpots(body, id, secret, stat) {
   if (!id || !secret) return 0;
-  const seen = new Map();
-  for (const p of [...(body.places || []), ...(body.foods || [])]) {
-    const [prov, city] = String(p.region || '').split(' ');
-    if (prov && city && !seen.has(prov + city)) seen.set(prov + city, { label: city.replace(/(시|군)$/, (m) => (city.length > 2 ? '' : m)), region: `${prov} ${city}` });
-  }
-  const jobs = [...seen.values()].slice(0, 70).flatMap((c) => SPOT_WORDS.map((w) => [w, c]));
+  const cities = citiesOf(body);
+  const jobs = [...cities.slice(0, 70).flatMap((c) => SPOT_WORDS.map((w) => [w, c])), ...cities.slice(0, 30).flatMap((c) => TREND_WORDS.map((w) => [w, c, true]))];
   const out = new Map();
-  await pool(jobs, 3, async ([[word, category, env], c]) => {
+  await pool(jobs, 3, async ([[word, category, env], c, trend]) => {
     if (stat.naverErr) return;
     const q = new URLSearchParams({ query: `${c.label} ${word}`, display: '5', start: '1', sort: 'comment' });
     const res = await naverLocal(q, id, secret);
@@ -184,16 +183,62 @@ export async function naverSpots(body, id, secret, stat) {
       // 검색한 시군구 밖(옆 동네) 결과는 빼요.
       if (c.label && !addr.includes(c.label)) return;
       const k = norm(name);
-      if (out.has(k) || (body.places || []).some((p) => norm(p.name) === k)) return;
+      const label = `네이버 ‘${c.label} ${word}’ 리뷰 많은 순 ${i + 1}위`;
+      const had = (body.places || []).find((p) => norm(p.name) === k);
+      // 이미 있는 곳이 요즘 검색에도 나오면 '요즘 뜨는'으로 표시만 해요.
+      if (had) { if (trend && !had.trend) { had.trend = label; if (had.popularity) had.popularity.score += 15; } return; }
+      if (out.has(k)) { if (trend && !out.get(k).trend) out.get(k).trend = label; return; }
       const x = Number(it.mapx), y = Number(it.mapy);
       out.set(k, {
         id: 'nspot-' + k, name, category, env, url: '', region: c.region, addr, tel: strip(it.telephone),
         lat: wgs(y), lng: wgs(x),
         note: `${cat.split('>').pop() || word} · 네이버 지역 검색에서 리뷰가 많은 곳이에요.`,
-        popularity: { kind: 'naver', label: `네이버 ‘${c.label} ${word}’ 리뷰 많은 순 ${i + 1}위`, source: '네이버 지역 검색(리뷰 많은 순)', basis: new Date().toISOString().slice(0, 10), score: 26 - i * 3 },
+        ...(trend ? { trend: label } : {}),
+        popularity: { kind: 'naver', label, source: '네이버 지역 검색(리뷰 많은 순)', basis: new Date().toISOString().slice(0, 10), score: (trend ? 34 : 26) - i * 3 },
       });
     });
   });
   body.places = [...(body.places || []), ...out.values()];
   return out.size;
+}
+
+// 장소·맛집 목록에 나온 '시도 시군구' — 장소가 많은 시군구부터
+function citiesOf(body) {
+  const seen = new Map();
+  for (const p of [...(body.places || []), ...(body.foods || [])]) {
+    const [prov, city] = String(p.region || '').split(' ');
+    if (!prov || !city) continue;
+    const k = prov + city;
+    if (!seen.has(k)) seen.set(k, { label: city.replace(/(시|군)$/, (m) => (city.length > 2 ? '' : m)), region: `${prov} ${city}`, n: 0 });
+    seen.get(k).n++;
+  }
+  return [...seen.values()].sort((a, b) => b.n - a.n);
+}
+
+// 블로그 언급: '시군구 아이랑 가볼만한곳'의 최근 블로그 글 100개에 장소 이름이 몇 번 나오는지 세요.
+// 많이 나온 곳일수록 요즘 사람들이 다녀와서 글을 쓰는 곳이라, 추천순에서 위로 올리고 '📝 블로그'로 표시해요.
+const NAVER_HUB = 'https://naverapihub.apigw.ntruss.com/search/v1';
+export async function naverBuzz(body, id, secret, stat) {
+  if (!id || !secret) return 0;
+  const places = (body.places || []).filter((p) => p.name && norm(p.name).length >= 3 && !(p.popularity && p.popularity.kind === 'festival'));
+  const cities = citiesOf(body).slice(0, 25);
+  let marked = 0;
+  await pool(cities, 3, async (c) => {
+    if (stat.naverErr) return;
+    const q = new URLSearchParams({ query: `${c.label} 아이랑 가볼만한곳`, display: '100', start: '1', sort: 'date' });
+    const res = await fetch(`${NAVER_HUB}/blog?${q}`, { headers: { 'X-NCP-APIGW-API-KEY-ID': id, 'X-NCP-APIGW-API-KEY': secret }, signal: AbortSignal.timeout(T) });
+    if (!res.ok) { stat.blogErr = `HTTP ${res.status}`; return; }
+    stat.naverCalls++;
+    const posts = ((await res.json()).items || []).map((it) => norm(`${it.title} ${it.description}`));
+    for (const p of places) {
+      if (!String(p.region || '').includes(c.region.split(' ')[1])) continue;
+      const k = norm(p.name);
+      const n = posts.filter((t) => t.includes(k)).length;
+      if (n < 2 || (p.buzz && p.buzz.n >= n)) continue;
+      if (!p.buzz) marked++;
+      p.buzz = { n, label: `최근 블로그 글 ${posts.length}개 중 ${n}개에 나와요`, query: `${c.label} 아이랑 가볼만한곳` };
+      if (p.popularity) p.popularity.score += Math.min(n * 4, 30);
+    }
+  });
+  return marked;
 }

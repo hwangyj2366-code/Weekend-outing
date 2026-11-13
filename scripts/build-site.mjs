@@ -8,7 +8,8 @@ import fs from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkKey, discover, events, mergeDiscover } from '../supabase/functions/_shared/tour.js';
+import { checkKey, crowd, discover, events, mergeDiscover } from '../supabase/functions/_shared/tour.js';
+import { kidsShows } from '../supabase/functions/_shared/kopis.js';
 import { enrichFoods, parseHundred } from '../supabase/functions/_shared/food-extra.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -19,7 +20,7 @@ const SITE_URL = (process.env.SITE_URL || '').replace(/\/+$/, '');
 // 서울·경기·전국은 'sg' 파일 하나로(앱이 지역으로 다시 걸러요). 나머지 지역은 각자 파일.
 export const DATA_REGIONS = ['sg', 'incheon', 'gangwon', 'chung', 'jeolla', 'gyeong', 'jeju'];
 // 맛집 보강용 키(없으면 그 단계만 건너뛰어요)
-const EXTRA = { TOUR_API_KEY: KEY, KAKAO_REST_KEY: process.env.KAKAO_REST_KEY || '', NAVER_CLIENT_ID: process.env.NAVER_CLIENT_ID || '', NAVER_CLIENT_SECRET: process.env.NAVER_CLIENT_SECRET || '' };
+const EXTRA = { TOUR_API_KEY: KEY, KAKAO_REST_KEY: process.env.KAKAO_REST_KEY || '', NAVER_CLIENT_ID: process.env.NAVER_CLIENT_ID || '', NAVER_CLIENT_SECRET: process.env.NAVER_CLIENT_SECRET || '', KOPIS_KEY: process.env.KOPIS_KEY || '' };
 const SECRETS = Object.values(EXTRA).filter((v) => v && v.length > 4);
 const hide = (s) => SECRETS.reduce((t, k) => t.split(k).join('***'), String(s));
 const HUNDRED = parseHundred(await fs.readFile(path.join(root, 'data-src', 'hundred-year.csv'), 'utf8').catch(() => ''));
@@ -58,8 +59,15 @@ for (const region of DATA_REGIONS) {
   if (body !== prev) {
     try {
       const st = await enrichFoods(body, EXTRA, HUNDRED);
-      extra = ` (네이버 ${EXTRA.NAVER_CLIENT_ID ? st.naverErr || st.naverCalls + '회, 체험·놀이 ' + st.spots + '곳' : '키 없음'}, 카카오 위치 ${EXTRA.KAKAO_REST_KEY ? st.kakaoErr || st.kakao + '곳' : '키 없음'}, 모범 ${st.modelErr || st.model + '곳'}, 백년가게 ${HUNDRED.length ? st.hundred + '곳' : '파일 없음'})`;
+      extra = ` (네이버 ${EXTRA.NAVER_CLIENT_ID ? st.naverErr || st.naverCalls + '회, 체험·놀이·요즘 ' + st.spots + '곳, 블로그 ' + (st.blogErr || st.buzz + '곳') : '키 없음'}, 카카오 위치 ${EXTRA.KAKAO_REST_KEY ? st.kakaoErr || st.kakao + '곳' : '키 없음'}, 모범 ${st.modelErr || st.model + '곳'}, 백년가게 ${HUNDRED.length ? st.hundred + '곳' : '파일 없음'})`;
     } catch (e) { extra = ` (맛집 보강 실패: ${hide(e.message)})`; }
+    // 이번 주말 붐빔 예상(관광지 집중률) — 서울·경기·인천만
+    try {
+      const c = await crowd(KEY, region, body.places);
+      if (c.err || c.marked || c.added.length) extra += ` 붐빔 ${c.err || c.marked + '곳 표시, ' + c.added.length + '곳 추가'}`;
+      const have = new Set(body.places.map((p) => p.name.replace(/s/g, '')));
+      body.places.push(...c.added.filter((p) => !have.has(p.name.replace(/s/g, ''))));
+    } catch (e) { extra += ` 붐빔 실패: ${hide(e.message).slice(0, 60)}`; }
   }
   await fs.writeFile(path.join(out, 'data', `discover-${region}.json`), JSON.stringify(body));
   summary.push(`${region}: ${body.places.length}곳, 맛집 ${(body.foods || []).length}곳${extra}, 위치 ${body.places.filter((p) => p.lat != null).length}곳, ${Math.round((Date.now() - started) / 1000)}초${body === prev ? ' (이전 데이터)' : ''}`);
@@ -76,9 +84,14 @@ for (const region of DATA_REGIONS) {
     try { body = await events(KEY, prev); } catch (e) { console.warn(`[events] 만들기 실패: ${hide(e.message)}`); }
   }
   if (!body && prev && Date.now() - new Date(prev.fetchedAt).getTime() < 7 * 24 * 3600 * 1000) body = prev;
+  // 아이 공연(KOPIS): 실패하면 이전 파일의 공연 목록을 이어 받아요.
+  let kids = null;
+  if (EXTRA.KOPIS_KEY) { try { kids = await kidsShows(EXTRA.KOPIS_KEY); } catch (e) { console.warn(`[kopis] ${hide(e.message)}`); } }
   if (body) {
+    if (kids) Object.assign(body, { shows: kids.shows, showsAt: kids.fetchedAt, showsRanked: kids.ranked });
+    else if (prev && prev.shows && body !== prev) Object.assign(body, { shows: prev.shows, showsAt: prev.showsAt, showsRanked: prev.showsRanked });
     await fs.writeFile(path.join(out, 'data', 'events.json'), JSON.stringify(body));
-    summary.push(`events: ${body.events.length}건, 사이트 ${body.events.filter((e) => e.homepage).length}건, ${Math.round((Date.now() - started) / 1000)}초${body === prev ? ' (이전 데이터)' : ''}`);
+    summary.push(`events: ${body.events.length}건, 사이트 ${body.events.filter((e) => e.homepage).length}건, 아이 공연 ${EXTRA.KOPIS_KEY ? (body.shows || []).length + '건(예매 순위 ' + (body.showsRanked || 0) + ')' : '키 없음'}, ${Math.round((Date.now() - started) / 1000)}초${body === prev ? ' (이전 데이터)' : ''}`);
   } else summary.push('events: 데이터 없음');
 }
 await fs.writeFile(path.join(out, 'data', 'index.json'), JSON.stringify({ builtAt: new Date().toISOString(), regions: DATA_REGIONS, check, keyId, summary }));

@@ -222,6 +222,13 @@
       `<span class="muted">${metaLine(p)}</span><h3>${esc(p.name)}</h3>` +
       popLine(p) + '</div></article>';
   }
+  // 요즘 뜨는 곳 근거: 네이버 '요즘' 검색어(팝업·전시·체험전), 최근 블로그 언급, 이번 주말 붐빔 예상
+  const isTrend = (p) => !!(p.trend || p.buzz || (p.crowd && p.crowd.rate >= 70) || p.show);
+  const trendBoxes = (p) => [
+    p.trend && p.popularity && p.popularity.label !== p.trend ? `<div class="popbox">✨ <b>${esc(p.trend)}</b><div class="muted">네이버 지역 검색 · 요즘 많이 찾는 검색어</div></div>` : '',
+    p.buzz ? `<div class="popbox">📝 <b>${esc(p.buzz.label)}</b><div class="muted">네이버 블로그 ‘${esc(p.buzz.query)}’ 최신 글</div></div>` : '',
+    p.crowd && !(p.popularity && p.popularity.kind === 'crowd') ? `<div class="popbox">👥 <b>${esc(p.crowd.label)}</b><div class="muted">한국관광공사 관광지 집중률 예측(KT 이동통신) · ${esc(p.crowd.basis)}</div></div>` : '',
+  ].join('');
   function detailHtml(p) {
     const pop = p.popularity ? `<div class="popbox">${isEvent(p) ? '🎪' : '🔥'} <b>${esc(p.popularity.label)}</b><div class="muted">${esc(p.popularity.source)} · 기준 ${esc(p.popularity.basis)}</div></div>` : '';
     const h = p.hours || {};
@@ -234,7 +241,7 @@
       (savedHere ? `<button data-unsave="${esc(p.id)}">♥ 즐겨찾기에서 빼기</button>` : `<button data-save="${esc(p.id)}">♡ 즐겨찾기 저장</button>`);
     const km = C.distanceKm(here, p);
     return `${art(p)}<div class="muted" style="margin-top:12px">${metaLine(p, '지역 미확인')}${km != null ? ' <span class="muted">(현재 위치에서 직선거리)</span>' : ''}</div>` +
-      `<h2>${esc(p.name)}</h2>${note ? `<p>${esc(note)}</p>` : ''}${badgeLine(p)}${pop}${p.naver && p.popularity && p.popularity.kind !== 'naver' ? `<div class="popbox">🟢 <b>${esc(p.naver)}</b><div class="muted">네이버 지역 검색(리뷰 많은 순)</div></div>` : ''}${p.addr ? `<p class="muted">📍 ${esc(p.addr)}${p.tel ? ' · ☎ ' + esc(p.tel) : ''}</p>` : ''}${hours}` +
+      `<h2>${esc(p.name)}</h2>${note ? `<p>${esc(note)}</p>` : ''}${badgeLine(p)}${pop}${p.naver && p.popularity && p.popularity.kind !== 'naver' ? `<div class="popbox">🟢 <b>${esc(p.naver)}</b><div class="muted">네이버 지역 검색(리뷰 많은 순)</div></div>` : ''}${trendBoxes(p)}${p.addr ? `<p class="muted">📍 ${esc(p.addr)}${p.tel ? ' · ☎ ' + esc(p.tel) : ''}</p>` : ''}${hours}` +
       `<p class="muted">방문 전 운영시간·휴무·예약을 지도나 공식 홈페이지에서 꼭 확인해 주세요.</p>` +
       `<div class="row wrapline">${isEvent(p) ? `<a class="link primary" target="_blank" rel="noopener noreferrer" href="${esc(eventHref(p).href)}">🎪 ${eventHref(p).label}</a>` : ''}${mapButtons(p)}${actions}</div>`;
   }
@@ -245,7 +252,7 @@
     return { env: ui.env, region: ui.region, ...extra };
   }
   function findPlace(id) {
-    return saved.find((p) => p.id === id) || live.places.find((p) => p.id === id) || evData.list.find((p) => p.id === id) ||
+    return saved.find((p) => p.id === id) || live.places.find((p) => p.id === id) || evData.list.find((p) => p.id === id) || (evData.shows || []).find((p) => p.id === id) ||
       Object.values(nation.byArea).flat().find((p) => p.id === id) || Object.values(nation.foods).flat().find((p) => p.id === id) || C.SEED.find((p) => p.id === id);
   }
 
@@ -341,21 +348,21 @@
   }
   function renderPopular() {
     loadNation(); loadEvents();
-    if (evData.status === 'ok') $('evBannerSub').textContent = `전국 축제·행사 — ${evPeriods().map((x) => `${x.label} ${evRows(x).length}`).join(' · ')}`;
+    if (evData.status === 'ok') $('evBannerSub').textContent = `전국 축제·행사 — ${evPeriods().filter((x) => !x.kids).map((x) => `${x.label} ${evRows(x).length}`).join(' · ')}`;
     const cat = NOT_SPOT.includes(ui.homeCat) ? '' : ui.homeCat;
     $('popGroups').innerHTML = catChips('data-hcat', cat, (k) => !NOT_SPOT.includes(k));
     $('popEnv').innerHTML = envChips();
     const loading = nation.status !== 'ok';
-    $('popStatus2').textContent = loading ? '가볼만한 곳을 불러오는 중…' : '🔥 인기: 이번 주말 행사 · 티맵 연관 관광지 순위(매일 아침) · ⭐ 내 즐겨찾기(음식점·숙소·쇼핑 제외)';
+    $('popStatus2').textContent = loading ? '가볼만한 곳을 불러오는 중…' : '🔥 인기: 이번 주말 행사 · 티맵 연관 관광지 순위 · ✨ 요즘: 네이버 요즘 검색어·블로그 언급·주말 붐빔 예상(매일 아침) · ⭐ 내 즐겨찾기(음식점·숙소·쇼핑 제외)';
     $('popStatus2').classList.remove('off');
     const pool = loading ? { list: [], names: new Set() } : spotPool();
     const f = { category: cat, env: ui.env };
     const pops = C.filterPlaces(pool.list, f);
     const favOnly = C.filterPlaces(saved.filter((p) => isSpot(p) && !pool.names.has(C.normName(p.name))), f);
-    const bySrc = { pop: pops, fav: [...pops.filter(isSaved), ...favOnly] };
+    const bySrc = { pop: pops, fav: [...pops.filter(isSaved), ...favOnly], trend: pops.filter(isTrend) };
     bySrc[''] = [...pops, ...favOnly];
-    if (!bySrc[ui.popSrc]) ui.popSrc = '';
-    $('popSrc').innerHTML = chipRow('data-popsrc', ui.popSrc, SRC3(bySrc));
+    if (!bySrc[ui.popSrc] || (ui.popSrc === 'trend' && !bySrc.trend.length)) ui.popSrc = '';
+    $('popSrc').innerHTML = chipRow('data-popsrc', ui.popSrc, [...SRC3(bySrc).slice(0, 2), ...(bySrc.trend.length ? [['trend', '✨ 요즘', bySrc.trend.length]] : []), SRC3(bySrc)[2]]);
     const all = bySrc[ui.popSrc];
     const counts = countBy(all, subKey);
     const subs = SUBS.filter((k) => counts[k]);
@@ -430,9 +437,21 @@
       { id: 'weekend', label: '이번 주말', sub: `${sat.getMonth() + 1}/${sat.getDate()}–${sun.getMonth() + 1}/${sun.getDate()}`, from: later(today, ymdOf(sat)), to: ymdOf(sun), before: '주말 전부터 열리고 있어요', within: '이번 주말에 시작해요' },
       { id: 'month', label: '이번 달', sub: `${now.getMonth() + 1}월`, from: today, to: ymdOf(new Date(now.getFullYear(), now.getMonth() + 1, 0)), before: '지금 열리고 있어요', within: `${now.getMonth() + 1}월에 새로 시작해요` },
       { id: 'next', label: '다음 달', sub: `${next.getMonth() + 1}월`, from: ymdOf(next), to: ymdOf(new Date(next.getFullYear(), next.getMonth() + 1, 0)), before: '이번 달부터 이어져요', within: `${next.getMonth() + 1}월에 시작해요` },
+      ...(evData.shows && evData.shows.length ? [{ id: 'kids', label: '🎭 아이 공연', sub: '지금 공연 중', kids: true }] : []),
     ];
   }
-  const evRows = (per) => evData.list.filter((e) => e.start <= per.to && e.end >= per.from);
+  const evRows = (per) => (per.kids ? evData.shows : evData.list.filter((e) => e.start <= per.to && e.end >= per.from));
+  // KOPIS 아동공연: 예매 순위가 있으면 순위대로, 없으면 끝나는 날 순
+  function showPlace(e) {
+    const when = e.openrun ? `${md(e.start)} ~ 오픈런` : `${md(e.start)} ~ ${md(e.end)}`;
+    return {
+      id: e.id, name: e.name, category: '축제·행사', env: '실내', url: '', origin: 'live', show: true, rank: e.rank || 0, venue: e.venue,
+      region: e.region, area: e.area, image: e.image, homepage: e.homepage, start: e.start, end: e.end, lat: null, lng: null,
+      note: [e.genre, e.venue].filter(Boolean).join(' · '), evLabel: when, evBadge: '공연',
+      popularity: { kind: 'festival', label: e.rank ? `지난주 아동공연 예매 ${e.rank}위` : `${when} 공연`, source: '공연예술통합전산망(KOPIS)', basis: String((evData.meta && evData.meta.showsAt) || '').slice(0, 10), score: 0 },
+      hours: { period: when, addr: e.venue, usetime: '', restdate: '', infocenter: '', reservation: '', source: '공연예술통합전산망(KOPIS)' },
+    };
+  }
   function evPlace(e) {
     return {
       id: 'ev-' + e.id, name: e.name, category: '축제·행사', env: '야외', url: '', origin: 'live',
@@ -445,13 +464,13 @@
   function evRow(p) {
     const today = ymdOf(new Date());
     const days = Math.round((dateOf(p.start) - dateOf(today)) / 86400000);
-    const tag = p.start <= today ? '<span class="tag on">진행 중</span>' : `<span class="tag">${days === 1 ? '내일' : `D-${days}`}</span>`;
+    const tag = p.show && p.rank ? `<span class="tag on">🎟 예매 ${p.rank}위</span>` : p.start <= today ? `<span class="tag on">${p.show ? '공연 중' : '진행 중'}</span>` : `<span class="tag">${days === 1 ? '내일' : `D-${days}`}</span>`;
     const heart = heartBtn(p, 'heart-s');
     const ev = eventHref(p);
-    return `<div class="item evrow"><div class="ico" style="background:#fbe2cf" aria-hidden="true">🎪${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" onerror="this.remove()">` : ''}</div>` +
-      `<div class="txt" data-detail="${esc(p.id)}" role="button" tabindex="0"><b>${esc(p.name)}</b><span class="when">${esc(evDates(p))} ${tag}</span>` +
-      `<span class="muted">${[distText(p), p.region].filter(Boolean).map(esc).join(' · ')}</span></div>` +
-      `<div class="acts">${heart}<a class="link maplink" target="_blank" rel="noopener noreferrer" href="${esc(ev.href)}" aria-label="${esc(p.name)} ${ev.label}">${p.homepage ? '🎪 사이트' : '🔎 검색'}</a></div></div>`;
+    return `<div class="item evrow"><div class="ico" style="background:${p.show ? '#efe0f7' : '#fbe2cf'}" aria-hidden="true">${p.show ? '🎭' : '🎪'}${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy" onerror="this.remove()">` : ''}</div>` +
+      `<div class="txt" data-detail="${esc(p.id)}" role="button" tabindex="0"><b>${esc(p.name)}</b><span class="when">${esc(p.show ? p.evLabel : evDates(p))} ${tag}</span>` +
+      `<span class="muted">${[distText(p), p.region, p.venue].filter(Boolean).map(esc).join(' · ')}</span></div>` +
+      `<div class="acts">${heart}<a class="link maplink" target="_blank" rel="noopener noreferrer" href="${esc(ev.href)}" aria-label="${esc(p.name)} ${ev.label}">${p.show ? '🎭 공연정보' : p.homepage ? '🎪 사이트' : '🔎 검색'}</a></div></div>`;
   }
   function renderEvents() {
     loadEvents();
@@ -460,7 +479,7 @@
     const ok = evData.status === 'ok';
     $('evWhen').innerHTML = pers.map((x) => `<button data-evwhen="${x.id}" class="${x.id === per.id ? 'active' : ''}">${x.label} <small>${x.sub}${ok ? ` · ${evRows(x).length}건` : ''}</small></button>`).join('');
     const when = ok && evData.meta.fetchedAt ? new Date(evData.meta.fetchedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
-    $('evStatus').textContent = ok ? `한국관광공사 행사정보 · 전국 ${evData.list.length}건 · ${when} 업데이트`
+    $('evStatus').textContent = ok ? (per.kids ? `공연예술통합전산망(KOPIS) 아동공연 · 지금 공연 중 ${evData.shows.length}건${evData.meta.showsRanked ? ' · 🎟 지난 7일 예매 순위' : ''}` : `한국관광공사 행사정보 · 전국 ${evData.list.length}건 · ${when} 업데이트`)
       : evData.status === 'error' ? evData.error : evData.status === 'pending' ? '행사 데이터를 처음 만드는 중이에요(몇 분 걸려요).' : '행사 정보를 불러오는 중…';
     $('evStatus').classList.toggle('off', evData.status === 'error');
     const all = ok ? evRows(per) : [];
@@ -476,6 +495,7 @@
       `<div class="chips barchips" role="group" aria-label="지역">${chip('', '전국', all.length)}${subs.map((k) => chip(k, subShort(k), counts[k])).join('')}</div>`;
     if (!ok) { $('evList').innerHTML = ''; return; }
     if (!rows.length) { $('evList').innerHTML = `<div class="empty"><p>${esc(per.label)}에 열리는 행사가 없어요.</p></div>`; return; }
+    if (per.kids && !near) { $('evList').innerHTML = `<div class="list">${rows.map(evRow).join('')}</div>`; return; }
     if (near) { $('evList').innerHTML = `<div class="list">${C.byDistance(rows, here).map(evRow).join('')}</div>`; return; }
     // 날짜순: 기간 안에 새로 시작하는 행사(시작하는 날 순)와 그 전부터 이어지는 행사(끝나는 날 순)로 나눠요.
     const within = rows.filter((p) => p.start >= per.from).sort((a, b) => a.start.localeCompare(b.start));
@@ -551,7 +571,8 @@
   // 맛집 배지: 네이버 리뷰 순위, 모범음식점, 백년가게, 어린이 놀이방
   const BADGE = { '모범음식점': '🏅 모범음식점', '백년가게': '💯 백년가게' };
   const badgeLine = (p) => {
-    const b = [p.naver && p.popularity && p.popularity.kind !== 'naver' ? '🟢 ' + p.naver : '', ...(p.badges || []).map((x) => BADGE[x] || x), p.kids ? '👶 놀이방' : ''].filter(Boolean);
+    const b = [p.trend ? '✨ 요즘 뜨는' : '', p.buzz ? `📝 블로그 ${p.buzz.n}` : '', p.crowd && p.crowd.rate >= 70 ? `👥 주말 붐빔 ${p.crowd.rate}%` : '',
+      p.naver && p.popularity && p.popularity.kind !== 'naver' ? '🟢 ' + p.naver : '', ...(p.badges || []).map((x) => BADGE[x] || x), p.kids ? '👶 놀이방' : ''].filter(Boolean);
     return b.length ? `<span class="badges">${b.map((x) => `<i>${esc(x)}</i>`).join('')}</span>` : '';
   };
   // 여러 곳 선택(즐겨찾기 화면): 줄 앞 체크, 아래 막대에서 분류 바꾸기·빼기
@@ -1418,6 +1439,7 @@
         if (!res.ok || !data || !Array.isArray(data.events)) throw new Error((data && data.error) || `HTTP ${res.status}`);
         evData = { status: 'ok', list: [], meta: data };
         evData.list = data.events.map(evPlace);
+        evData.shows = (data.shows || []).map(showPlace);
       }
     } catch (err) { evData = { status: 'error', list: [], meta: null, error: liveErrorText(err), at: Date.now() }; }
     if (['popular', 'events'].includes(route())) render();
