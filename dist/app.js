@@ -35,10 +35,20 @@
     // 홈에 보일 분류: 처음엔 나들이 분류 + 음식점
     if (!Array.isArray(ui.homeCats)) ui.homeCats = [...C.OUTING, '맛집·카페'];
     ui.homeCats = ui.homeCats.filter((k) => C.TYPES[k]);
+    addNewCats();
     delete ui.homeGroup; delete ui.homeGroups; delete ui.favGroup; // 예전 큰 분류 설정
     // 인기·맛집 화면은 열 때마다 인기순으로 시작해요(거리순은 그때그때 눌러서).
     ui.popSort = 'score'; ui.foodSort = 'score';
   } catch { /* 기본값 */ }
+  // 앱에 새로 생긴 나들이 분류(예: 🥂 어른용)는 예전에 저장한 분류 목록에도 한 번 넣어 줘요.
+  // seenCats = 이미 보여 준 기본 나들이 분류. 사용자가 끈 분류는 다시 켜지 않아요.
+  function addNewCats() {
+    const LATER = ['어른용']; // seenCats가 생기기 전에 추가된 분류
+    const seen = Array.isArray(ui.seenCats) ? ui.seenCats : C.OUTING.filter((k) => !LATER.includes(k));
+    const add = C.OUTING.filter((k) => !seen.includes(k));
+    if (add.length) ui.homeCats = [...new Set([...ui.homeCats, ...add])];
+    ui.seenCats = [...C.OUTING];
+  }
   let live = { status: 'loading', places: [], meta: null };
   let order = new Map(); // 홈 즐겨찾기 추천 섞기 순서
   let lastPickId = null;
@@ -1052,7 +1062,7 @@
   const sync = { busy: false, err: '', sent: false };
   const readSync = () => { try { return JSON.parse(localStorage.getItem(SYNC_KEY) || '{}') || {}; } catch { return {}; } };
   const writeSync = (v) => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(v)); } catch { /* 선택 */ } };
-  const UI_SYNC = ['region', 'mapApp', 'homeCats', 'customGroups'];
+  const UI_SYNC = ['region', 'mapApp', 'homeCats', 'seenCats', 'customGroups'];
   function snapshot() {
     return { v: 1, places: saved, excluded: readExcluded(), lists: readLists(), ui: Object.fromEntries(UI_SYNC.map((k) => [k, ui[k]])) };
   }
@@ -1062,7 +1072,12 @@
       if (Array.isArray(d.places)) persist(d.places.map(C.refreshAuto), true);
       if (Array.isArray(d.excluded)) writeExcluded(d.excluded);
       if (Array.isArray(d.lists)) writeLists(d.lists);
-      if (d.ui) { for (const k of UI_SYNC) if (d.ui[k] !== undefined) ui[k] = d.ui[k]; saveUi(); applyCustom(); }
+      if (d.ui) {
+        for (const k of UI_SYNC) if (d.ui[k] !== undefined) ui[k] = d.ui[k];
+        if (d.ui.seenCats === undefined) delete ui.seenCats; // 예전 기기에서 저장한 목록이면 새 분류를 다시 넣어요
+        if (Array.isArray(ui.homeCats)) addNewCats();
+        saveUi(); applyCustom();
+      }
     } finally { applying = false; }
   }
   // 두 기기 내용 합치기(같은 곳은 한 번만). 지운 것은 되살아날 수 있어서 처음 로그인할 때·충돌 때만 써요.
