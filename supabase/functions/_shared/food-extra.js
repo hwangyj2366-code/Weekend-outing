@@ -173,13 +173,17 @@ const FOOD_CAT = /음식점|식당|카페,디저트|브런치|베이커리|디�
 const KID_CAT = /키즈|놀이|체험|관람|동물원|동물카페|고양이카페|테마파크|테마공원|박물관|미술관|전시관|과학관|아쿠아리움|식물원|수목원|공원|농원|팜스테이|농장|캠핑|문화시설|복합문화공간|캐릭터 팝업|애니메이션 팝업|게임 팝업|도서 팝업|장난감|공방|슬라임|롤러|수영장|승마|스포츠,오락|레저|썰매|도서관/;
 const catOf = (p) => String(p.note || '').split(' · ')[0];
 const POPUP = /팝업|pop-?up/i;
+// 업종이 그냥 '팝업스토어'여도 이름으로 아이용인 걸 알아봐요(캐릭터·키즈).
+const KID_NAME = /키즈|어린이|아이랑|유아|짱구|뽀로로|타요|핑크퐁|아기상어|티니핑|포켓몬|산리오|헬로키티|시나모롤|쿠로미|원피스|도라에몽|코난|레고|토이|장난감|캐릭터|kids|lego|pokemon/i;
 const pastYear = (s) => (String(s).match(/20\d\d/g) || []).some((y) => Number(y) < new Date().getFullYear());
 export async function naverSpots(body, id, secret, stat) {
   if (!id || !secret) return 0;
   // 지난 빌드에서 이어 온 '요즘' 결과도 같은 기준으로 다시 걸러요(예전 '팝업스토어' 검색 결과, 술·가게·지난해 행사).
+  // 지난 빌드에서 어른용으로 들어간 캐릭터·키즈 팝업은 체험·놀이로 옮겨요.
+  for (const p of body.places || []) if (p.category === '어른용' && KID_NAME.test(p.name) && !NOT_TREND.test(p.name)) p.category = '체험·놀이';
   const adult = (p) => p.category === '어른용';
-  const badTrend = (p) => p.trend && (adult(p) ? pastYear(p.name) : NOT_TREND.test(p.name) || pastYear(p.name) || /‘[^’]* 팝업스토어’/.test(p.trend) && !/아이랑 팝업스토어/.test(p.trend)
-    || String(p.id).startsWith('nspot-') && !KID_CAT.test(catOf(p)));
+  const badTrend = (p) => p.trend && (adult(p) || KID_NAME.test(p.name) && !NOT_TREND.test(p.name) ? pastYear(p.name) : NOT_TREND.test(p.name) || pastYear(p.name) || /‘[^’]* 팝업스토어’/.test(p.trend) && !/아이랑 팝업스토어/.test(p.trend)
+    || String(p.id).startsWith('nspot-') && !KID_CAT.test(catOf(p)) && !KID_NAME.test(p.name));
   const food = (p) => !adult(p) && String(p.id).startsWith('nspot-') && FOOD_CAT.test(catOf(p)) && !/키즈카페/.test(String(p.popularity && p.popularity.label));
   body.places = (body.places || []).filter((p) => !(String(p.id).startsWith('nspot-') && badTrend(p)) && !food(p));
   for (const p of body.places) if (badTrend(p)) delete p.trend;
@@ -199,8 +203,9 @@ export async function naverSpots(body, id, secret, stat) {
       if (!name || c.label && !addr.includes(c.label) || trend && pastYear(name)) return;
       const kidOk = !NOT_SPOT.test(name + ' ' + cat) && !(FOOD_CAT.test(cat) && word !== '키즈카페') && !(trend && (NOT_TREND.test(name + ' ' + cat) || !KID_CAT.test(cat)));
       // 그냥 '팝업스토어' 검색: 아이랑 갈 만하면 체험·놀이, 아니어도 팝업이면 어른용, 팝업도 아니면(기념품점 등) 빼요.
-      const cate = category !== '어른용' ? category : kidOk ? '체험·놀이' : '어른용';
-      if (cate === '어른용' ? !POPUP.test(name + ' ' + cat) : !kidOk) return;
+      const kidPopup = category === '어른용' && POPUP.test(name + ' ' + cat) && KID_NAME.test(name) && !NOT_TREND.test(name);
+      const cate = category !== '어른용' ? category : kidOk || kidPopup ? '체험·놀이' : '어른용';
+      if (cate === '어른용' ? !POPUP.test(name + ' ' + cat) : !(kidOk || kidPopup)) return;
       const k = norm(name);
       const label = `네이버 ‘${c.label} ${word}’ 리뷰 많은 순 ${i + 1}위`;
       const had = (body.places || []).find((p) => norm(p.name) === k);
