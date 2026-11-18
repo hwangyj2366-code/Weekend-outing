@@ -167,9 +167,19 @@ const TREND_WORDS = [['아이랑 팝업스토어', '체험·놀이', '실내'], 
 const NOT_SPOT = /술집|주점|호프|노래|PC방|당구|스크린|골프|헬스|필라테스|요가|학원|병원|의원|부동산|모텔|호텔/;
 // 요즘 검색(팝업 등)에서 아이랑 갈 곳이 아닌 것: 술·담배·성인, 그냥 가게(기념품·커피·옷·화장품), 지난해 행사
 const NOT_TREND = /술|음주|주류|맥주|와인|위스키|소주|하이볼|칵테일|바$|펍|담배|성인|19금|카지노|기념품|편의점|커피|디저트|베이커리|의류|패션|신발|가방|화장품|뷰티|코스메틱|향수|주얼리|안경|면세|아울렛|백화점$|마트$|대학교|사무소|오피스|코리아리미티드|리미티드|주식회사|㈜/i;
-const pastYear = (s) => (String(s).match(/20dd/g) || []).some((y) => Number(y) < new Date().getFullYear());
+// 네이버 업종으로 거르기: 식당은 '나들이'에서 빼고(키즈카페 검색 제외), '요즘' 결과는 아이랑 갈 만한 업종만 남겨요.
+const FOOD_CAT = /음식점|식당|카페,디저트|브런치|베이커리|디저트|한식|양식|중식|일식|분식|아시아음식|이탈리아음식|스파게티|파스타|육류|고기|곱창|감자탕|떡볶이|만두|샐러드|뷔페|치킨|피자|햄버거|패스트푸드|짬뽕|짜장|마라탕|국수|냉면|해물|생선|돈가스|술집/;
+const KID_CAT = /키즈|놀이|체험|관람|동물원|동물카페|고양이카페|테마파크|테마공원|박물관|미술관|전시관|과학관|아쿠아리움|식물원|수목원|공원|농원|팜스테이|농장|캠핑|문화시설|복합문화공간|캐릭터 팝업|애니메이션 팝업|게임 팝업|도서 팝업|장난감|공방|슬라임|롤러|수영장|승마|스포츠,오락|레저|썰매|도서관/;
+const catOf = (p) => String(p.note || '').split(' · ')[0];
+const pastYear = (s) => (String(s).match(/20\d\d/g) || []).some((y) => Number(y) < new Date().getFullYear());
 export async function naverSpots(body, id, secret, stat) {
   if (!id || !secret) return 0;
+  // 지난 빌드에서 이어 온 '요즘' 결과도 같은 기준으로 다시 걸러요(예전 '팝업스토어' 검색 결과, 술·가게·지난해 행사).
+  const badTrend = (p) => p.trend && (NOT_TREND.test(p.name) || pastYear(p.name) || /‘[^’]* 팝업스토어’/.test(p.trend) && !/아이랑 팝업스토어/.test(p.trend)
+    || String(p.id).startsWith('nspot-') && !KID_CAT.test(catOf(p)));
+  const food = (p) => String(p.id).startsWith('nspot-') && FOOD_CAT.test(catOf(p)) && !/키즈카페/.test(String(p.popularity && p.popularity.label));
+  body.places = (body.places || []).filter((p) => !(String(p.id).startsWith('nspot-') && badTrend(p)) && !food(p));
+  for (const p of body.places) if (badTrend(p)) delete p.trend;
   const cities = citiesOf(body);
   const jobs = [...cities.slice(0, 70).flatMap((c) => SPOT_WORDS.map((w) => [w, c])), ...cities.slice(0, 30).flatMap((c) => TREND_WORDS.map((w) => [w, c, true]))];
   const out = new Map();
@@ -181,11 +191,11 @@ export async function naverSpots(body, id, secret, stat) {
     stat.naverCalls++;
     ((await res.json()).items || []).forEach((it, i) => {
       const name = strip(it.title); const cat = String(it.category || '');
-      if (!name || NOT_SPOT.test(name + ' ' + cat) || /음식점|카페,디저트/.test(cat) && word !== '키즈카페') return;
+      if (!name || NOT_SPOT.test(name + ' ' + cat) || FOOD_CAT.test(cat) && word !== '키즈카페') return;
       const addr = strip(it.roadAddress || it.address);
       // 검색한 시군구 밖(옆 동네) 결과는 빼요.
       if (c.label && !addr.includes(c.label)) return;
-      if (trend && (NOT_TREND.test(name + ' ' + cat) || pastYear(name))) return;
+      if (trend && (NOT_TREND.test(name + ' ' + cat) || pastYear(name) || !KID_CAT.test(cat))) return;
       const k = norm(name);
       const label = `네이버 ‘${c.label} ${word}’ 리뷰 많은 순 ${i + 1}위`;
       const had = (body.places || []).find((p) => norm(p.name) === k);
