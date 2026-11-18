@@ -155,6 +155,7 @@ export async function enrichFoods(body, env, hundredShops) {
   hundredBadges(foods, hundredShops, stat);
   body.foods = foods;
   stat.spots = await naverSpots(body, env.NAVER_CLIENT_ID, env.NAVER_CLIENT_SECRET, stat);
+  stat.farms = await naverVerifyFarms(body, env.NAVER_CLIENT_ID, env.NAVER_CLIENT_SECRET, stat);
   stat.buzz = await naverBuzz(body, env.NAVER_CLIENT_ID, env.NAVER_CLIENT_SECRET, stat);
   return stat;
 }
@@ -165,7 +166,8 @@ const SPOT_WORDS = [['키즈카페', '체험·놀이', '실내'], ['실내놀이
 // 요즘 뜨는 곳: 팝업·전시·체험전처럼 공공데이터에 없는 '요즘' 장소. 큰 시군구(장소가 많은 순 30곳)만 찾아요.
 // '팝업스토어'(그냥)는 어른용: 술·브랜드·백화점 팝업은 '어른용'으로, 캐릭터·체험 팝업은 아이용으로 넣어요.
 const TREND_WORDS = [['팝업스토어', '어른용', '실내'], ['아이랑 팝업스토어', '체험·놀이', '실내'], ['아이랑 전시', '박물관', '실내'], ['어린이 체험전', '체험·놀이', '실내'], ['아이랑 가볼만한곳', '체험·놀이', '']];
-const NOT_SPOT = /술집|주점|호프|노래|PC방|당구|스크린|골프|헬스|필라테스|요가|학원|병원|의원|부동산|모텔|호텔/;
+// 유치원·어린이집·학교 같은 교육시설도 나들이 장소가 아니라서 빼요. (농장은 업종 대신 블로그 글로 확인해요: naverVerifyFarms)
+const NOT_SPOT = /술집|주점|호프|노래|PC방|당구|스크린|골프|헬스|필라테스|요가|학원|병원|의원|부동산|모텔|호텔|유치원|어린이집|초등학교|중학교|고등학교|교회|성당|주민센터|아파트/;
 // 요즘 검색(팝업 등)에서 아이랑 갈 곳이 아닌 것: 술·담배·성인, 그냥 가게(기념품·커피·옷·화장품), 지난해 행사
 const NOT_TREND = /술|음주|주류|맥주|와인|위스키|소주|하이볼|칵테일|바$|펍|담배|성인|19금|카지노|기념품|편의점|커피|디저트|베이커리|의류|패션|신발|가방|화장품|뷰티|코스메틱|향수|주얼리|안경|면세|아울렛|백화점$|마트$|대학교|사무소|오피스|코리아리미티드|리미티드|주식회사|㈜/i;
 // 네이버 업종으로 거르기: 식당은 '나들이'에서 빼고(키즈카페 검색 제외), '요즘' 결과는 아이랑 갈 만한 업종만 남겨요.
@@ -185,7 +187,8 @@ export async function naverSpots(body, id, secret, stat) {
   const badTrend = (p) => p.trend && (adult(p) || KID_NAME.test(p.name) && !NOT_TREND.test(p.name) ? pastYear(p.name) : NOT_TREND.test(p.name) || pastYear(p.name) || /‘[^’]* 팝업스토어’/.test(p.trend) && !/아이랑 팝업스토어/.test(p.trend)
     || String(p.id).startsWith('nspot-') && !KID_CAT.test(catOf(p)) && !KID_NAME.test(p.name));
   const food = (p) => !adult(p) && String(p.id).startsWith('nspot-') && FOOD_CAT.test(catOf(p)) && !/키즈카페/.test(String(p.popularity && p.popularity.label));
-  body.places = (body.places || []).filter((p) => !(String(p.id).startsWith('nspot-') && badTrend(p)) && !food(p));
+  const notSpot = (p) => String(p.id).startsWith('nspot-') && !adult(p) && NOT_SPOT.test(p.name + ' ' + catOf(p));
+  body.places = (body.places || []).filter((p) => !(String(p.id).startsWith('nspot-') && badTrend(p)) && !food(p) && !notSpot(p));
   for (const p of body.places) if (badTrend(p)) delete p.trend;
   const cities = citiesOf(body);
   const jobs = [...cities.slice(0, 70).flatMap((c) => SPOT_WORDS.map((w) => [w, c])), ...cities.slice(0, 30).flatMap((c) => TREND_WORDS.map((w) => [w, c, true]))];
@@ -239,11 +242,36 @@ function citiesOf(body) {
   return [...seen.values()].sort((a, b) => b.n - a.n);
 }
 
+const NAVER_HUB = 'https://naverapihub.apigw.ntruss.com/search/v1';
+const shortName = (name) => norm(String(name).replace(/\s+[^\s]*[가-힣A-Za-z0-9]점$/, '').replace(/\[.*?\]/g, ''));
+// 체험농장 검색 결과 확인: 동네에 체험농장이 적으면 리뷰 몇 개뿐인 곳도 '2위'로 들어와요(네이버는 리뷰 수를 안 줘요).
+// '이름 + 시군구' 블로그 글(관련도 순 30개) 중 제목·요약에 그 이름이 나온 글이 3개 이상인 곳만 남겨요.
+// 확인한 곳은 2주 동안 다시 묻지 않아요. 블로그 검색이 안 되면(키·한도 문제) 아무것도 빼지 않아요.
+export async function naverVerifyFarms(body, id, secret, stat) {
+  if (!id || !secret) return 0;
+  const cities = citiesOf(body);
+  const cityOf = (p) => cities.find((c) => c.region === String(p.region || '').split(' ').slice(0, 2).join(' '));
+  const fresh = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
+  const farms = (body.places || []).filter((p) => String(p.id).startsWith('nspot-') && /체험농장/.test(String(p.popularity && p.popularity.label)) && !(p.blogCheck && p.blogCheck.at >= fresh));
+  const drop = new Set();
+  await pool(farms, 4, async (p) => {
+    if (stat.blogErr) return;
+    const c = cityOf(p); const k = shortName(p.name);
+    const q = new URLSearchParams({ query: c ? strip(p.name) + ' ' + c.label : strip(p.name), display: '30', start: '1', sort: 'sim' });
+    const res = await fetch(NAVER_HUB + '/blog?' + q, { headers: { 'X-NCP-APIGW-API-KEY-ID': id, 'X-NCP-APIGW-API-KEY': secret }, signal: AbortSignal.timeout(T) });
+    if (!res.ok) { stat.blogErr = 'HTTP ' + res.status; return; }
+    stat.naverCalls++;
+    const n = ((await res.json()).items || []).filter((it) => norm(it.title + ' ' + it.description).includes(k)).length;
+    if (n < 3) drop.add(p); else p.blogCheck = { n, at: new Date().toISOString().slice(0, 10) };
+  });
+  if (!stat.blogErr) body.places = body.places.filter((p) => !drop.has(p));
+  stat.farmsDropped = stat.blogErr ? 0 : drop.size;
+  return farms.length;
+}
+
 // 블로그 언급: 인기 장소(점수 높은 순 120곳)마다 '장소 이름 + 시군구'로 최신 블로그 글 50개를 받아,
 // 최근 30일 안에 쓴 글 중 제목·요약에 그 이름이 나온 글 수를 세요. 3개 이상이면 '📝 블로그'로 표시하고 추천순에서 올려요.
 // (하루 호출 한도 25,000회 중 지역마다 120회 정도)
-const NAVER_HUB = 'https://naverapihub.apigw.ntruss.com/search/v1';
-const shortName = (name) => norm(String(name).replace(/\s+[^\s]*[가-힣A-Za-z0-9]점$/, '').replace(/\[.*?\]/g, ''));
 export async function naverBuzz(body, id, secret, stat) {
   if (!id || !secret) return 0;
   const cities = citiesOf(body);
