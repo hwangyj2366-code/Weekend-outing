@@ -245,24 +245,28 @@ function citiesOf(body) {
 const NAVER_HUB = 'https://naverapihub.apigw.ntruss.com/search/v1';
 const shortName = (name) => norm(String(name).replace(/\s+[^\s]*[가-힣A-Za-z0-9]점$/, '').replace(/\[.*?\]/g, ''));
 // 체험농장 검색 결과 확인: 동네에 체험농장이 적으면 리뷰 몇 개뿐인 곳도 '2위'로 들어와요(네이버는 리뷰 수를 안 줘요).
-// '이름 + 시군구' 블로그 글(관련도 순 30개) 중 제목·요약에 그 이름이 나온 글이 3개 이상인 곳만 남겨요.
+// 리뷰 수 대신 블로그 글 수로 걸러요: '"이름" 시군구' 블로그 글이 FARM_MIN개(30) 이상인 곳만 남겨요.
+// 전체 글 수(total)에는 이름이 안 나오는 글도 섞여서, 관련도 순 30개 중 이름이 나온 비율을 곱해 세요.
 // 확인한 곳은 2주 동안 다시 묻지 않아요. 블로그 검색이 안 되면(키·한도 문제) 아무것도 빼지 않아요.
+const FARM_MIN = 30;
 export async function naverVerifyFarms(body, id, secret, stat) {
   if (!id || !secret) return 0;
   const cities = citiesOf(body);
   const cityOf = (p) => cities.find((c) => c.region === String(p.region || '').split(' ').slice(0, 2).join(' '));
   const fresh = new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10);
-  const farms = (body.places || []).filter((p) => String(p.id).startsWith('nspot-') && /체험농장/.test(String(p.popularity && p.popularity.label)) && !(p.blogCheck && p.blogCheck.at >= fresh));
+  const farms = (body.places || []).filter((p) => String(p.id).startsWith('nspot-') && /체험농장/.test(String(p.popularity && p.popularity.label)) && !(p.blogCheck && p.blogCheck.min === FARM_MIN && p.blogCheck.at >= fresh));
   const drop = new Set();
   await pool(farms, 4, async (p) => {
     if (stat.blogErr) return;
     const c = cityOf(p); const k = shortName(p.name);
-    const q = new URLSearchParams({ query: c ? strip(p.name) + ' ' + c.label : strip(p.name), display: '30', start: '1', sort: 'sim' });
+    const q = new URLSearchParams({ query: '"' + strip(p.name) + '"' + (c ? ' ' + c.label : ''), display: '30', start: '1', sort: 'sim' });
     const res = await fetch(NAVER_HUB + '/blog?' + q, { headers: { 'X-NCP-APIGW-API-KEY-ID': id, 'X-NCP-APIGW-API-KEY': secret }, signal: AbortSignal.timeout(T) });
     if (!res.ok) { stat.blogErr = 'HTTP ' + res.status; return; }
     stat.naverCalls++;
-    const n = ((await res.json()).items || []).filter((it) => norm(it.title + ' ' + it.description).includes(k)).length;
-    if (n < 3) drop.add(p); else p.blogCheck = { n, at: new Date().toISOString().slice(0, 10) };
+    const j = await res.json(); const items = j.items || [];
+    const hit = items.filter((it) => norm(it.title + ' ' + it.description).includes(k)).length;
+    const n = items.length ? Math.round(Number(j.total || 0) * hit / items.length) : 0;
+    if (n < FARM_MIN) drop.add(p); else p.blogCheck = { n, min: FARM_MIN, at: new Date().toISOString().slice(0, 10) };
   });
   if (!stat.blogErr) body.places = body.places.filter((p) => !drop.has(p));
   stat.farmsDropped = stat.blogErr ? 0 : drop.size;
