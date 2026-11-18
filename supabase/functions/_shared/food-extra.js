@@ -163,8 +163,11 @@ export async function enrichFoods(body, env, hundredShops) {
 // 네이버 지역 검색 '시군구 + 검색어'를 리뷰 많은 순으로 5곳씩 받아 인기 장소에 더해요. (네이버 키가 있을 때만)
 const SPOT_WORDS = [['키즈카페', '체험·놀이', '실내'], ['실내놀이터', '체험·놀이', '실내'], ['체험농장', '자연·공원', '야외'], ['승마체험', '체험·놀이', '야외'], ['실내동물원', '체험·놀이', '실내']];
 // 요즘 뜨는 곳: 팝업·전시·체험전처럼 공공데이터에 없는 '요즘' 장소. 큰 시군구(장소가 많은 순 30곳)만 찾아요.
-const TREND_WORDS = [['팝업스토어', '체험·놀이', '실내'], ['아이랑 전시', '박물관', '실내'], ['어린이 체험전', '체험·놀이', '실내'], ['아이랑 가볼만한곳', '체험·놀이', '']];
+const TREND_WORDS = [['아이랑 팝업스토어', '체험·놀이', '실내'], ['아이랑 전시', '박물관', '실내'], ['어린이 체험전', '체험·놀이', '실내'], ['아이랑 가볼만한곳', '체험·놀이', '']];
 const NOT_SPOT = /술집|주점|호프|노래|PC방|당구|스크린|골프|헬스|필라테스|요가|학원|병원|의원|부동산|모텔|호텔/;
+// 요즘 검색(팝업 등)에서 아이랑 갈 곳이 아닌 것: 술·담배·성인, 그냥 가게(기념품·커피·옷·화장품), 지난해 행사
+const NOT_TREND = /술|음주|주류|맥주|와인|위스키|소주|하이볼|칵테일|바$|펍|담배|성인|19금|카지노|기념품|편의점|커피|디저트|베이커리|의류|패션|신발|가방|화장품|뷰티|코스메틱|향수|주얼리|안경|면세|아울렛|백화점$|마트$|대학교|사무소|오피스|코리아리미티드|리미티드|주식회사|㈜/i;
+const pastYear = (s) => (String(s).match(/20dd/g) || []).some((y) => Number(y) < new Date().getFullYear());
 export async function naverSpots(body, id, secret, stat) {
   if (!id || !secret) return 0;
   const cities = citiesOf(body);
@@ -182,6 +185,7 @@ export async function naverSpots(body, id, secret, stat) {
       const addr = strip(it.roadAddress || it.address);
       // 검색한 시군구 밖(옆 동네) 결과는 빼요.
       if (c.label && !addr.includes(c.label)) return;
+      if (trend && (NOT_TREND.test(name + ' ' + cat) || pastYear(name))) return;
       const k = norm(name);
       const label = `네이버 ‘${c.label} ${word}’ 리뷰 많은 순 ${i + 1}위`;
       const had = (body.places || []).find((p) => norm(p.name) === k);
@@ -215,30 +219,34 @@ function citiesOf(body) {
   return [...seen.values()].sort((a, b) => b.n - a.n);
 }
 
-// 블로그 언급: '시군구 아이랑 가볼만한곳'의 최근 블로그 글 100개에 장소 이름이 몇 번 나오는지 세요.
-// 많이 나온 곳일수록 요즘 사람들이 다녀와서 글을 쓰는 곳이라, 추천순에서 위로 올리고 '📝 블로그'로 표시해요.
+// 블로그 언급: 인기 장소(점수 높은 순 120곳)마다 '장소 이름 + 시군구'로 최신 블로그 글 50개를 받아,
+// 최근 30일 안에 쓴 글 중 제목·요약에 그 이름이 나온 글 수를 세요. 3개 이상이면 '📝 블로그'로 표시하고 추천순에서 올려요.
+// (하루 호출 한도 25,000회 중 지역마다 120회 정도)
 const NAVER_HUB = 'https://naverapihub.apigw.ntruss.com/search/v1';
+const shortName = (name) => norm(String(name).replace(/\s+[^\s]*[가-힣A-Za-z0-9]점$/, '').replace(/\[.*?\]/g, ''));
 export async function naverBuzz(body, id, secret, stat) {
   if (!id || !secret) return 0;
-  const places = (body.places || []).filter((p) => p.name && norm(p.name).length >= 3 && !(p.popularity && p.popularity.kind === 'festival'));
-  const cities = citiesOf(body).slice(0, 25);
+  const cities = citiesOf(body);
+  const cityOf = (p) => cities.find((c) => c.region === String(p.region || '').split(' ').slice(0, 2).join(' '));
+  const places = (body.places || [])
+    .filter((p) => shortName(p.name).length >= 3 && !(p.popularity && p.popularity.kind === 'festival') && cityOf(p))
+    .sort((x, y) => ((y.popularity && y.popularity.score) || 0) - ((x.popularity && x.popularity.score) || 0))
+    .slice(0, 120);
+  const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10).replace(/-/g, '');
   let marked = 0;
-  await pool(cities, 3, async (c) => {
-    if (stat.naverErr) return;
-    const q = new URLSearchParams({ query: `${c.label} 아이랑 가볼만한곳`, display: '100', start: '1', sort: 'date' });
+  await pool(places, 4, async (p) => {
+    if (stat.naverErr || stat.blogErr) return;
+    const c = cityOf(p); const k = shortName(p.name);
+    const query = `${strip(p.name).replace(/\[.*?\]/g, '').trim()} ${c.label}`;
+    const q = new URLSearchParams({ query, display: '50', start: '1', sort: 'date' });
     const res = await fetch(`${NAVER_HUB}/blog?${q}`, { headers: { 'X-NCP-APIGW-API-KEY-ID': id, 'X-NCP-APIGW-API-KEY': secret }, signal: AbortSignal.timeout(T) });
     if (!res.ok) { stat.blogErr = `HTTP ${res.status}`; return; }
     stat.naverCalls++;
-    const posts = ((await res.json()).items || []).map((it) => norm(`${it.title} ${it.description}`));
-    for (const p of places) {
-      if (!String(p.region || '').includes(c.region.split(' ')[1])) continue;
-      const k = norm(p.name);
-      const n = posts.filter((t) => t.includes(k)).length;
-      if (n < 2 || (p.buzz && p.buzz.n >= n)) continue;
-      if (!p.buzz) marked++;
-      p.buzz = { n, label: `최근 블로그 글 ${posts.length}개 중 ${n}개에 나와요`, query: `${c.label} 아이랑 가볼만한곳` };
-      if (p.popularity) p.popularity.score += Math.min(n * 4, 30);
-    }
+    const n = ((await res.json()).items || []).filter((it) => String(it.postdate || '') >= since && norm(`${it.title} ${it.description}`).includes(k)).length;
+    if (n < 3) return;
+    marked++;
+    p.buzz = { n, label: `최근 30일 블로그 글 ${n}${n >= 50 ? '개 이상' : '개'}`, query };
+    if (p.popularity) p.popularity.score += Math.min(n, 30);
   });
   return marked;
 }
