@@ -25,7 +25,7 @@ assert.equal(C.groupOf('맛집·카페'), 'food');
 assert.equal(C.infer('가평 숲속 펜션'), '숙소·펜션');
 assert.equal(C.infer('서울어린이대공원'), '자연·공원');
 assert.ok(!C.TYPES['여행지'] && !C.TYPES['키즈카페']);
-assert.deepEqual(C.categories().slice(0, 8), ['박물관', '과학관', '체험·놀이', '자연·공원', '축제·행사', '캠핑장', '맛집·카페', '숙소·펜션']);
+assert.deepEqual(C.categories().slice(0, 9), ['박물관', '과학관', '체험·놀이', '자연·공원', '축제·행사', '어른용', '캠핑장', '맛집·카페', '숙소·펜션']);
 ok('카테고리 자동 분류(분류 한 줄: 박물관·고궁/과학관/체험·놀이/자연·공원/축제/캠핑장/음식점/숙소/…), 네이버 업종명 활용');
 
 // 2. Takeout CSV: 추가 / 중복 / 오류 / 경고

@@ -858,7 +858,8 @@
     const f = homeFilter({ outingOnly: true, allowUnknownRegion: true });
     const mine = ui.pickFrom === 'new' ? [] : C.filterPlaces(saved, f);
     const fresh = ui.pickFrom === 'mine' ? [] : C.filterPlaces(popularPool().filter((p) => !isSaved(p)), f);
-    return [...mine, ...fresh];
+    // 아이랑 갈 곳을 골라 주는 기능이라 어른용(술·브랜드 팝업)은 빼요.
+    return [...mine, ...fresh].filter((p) => p.category !== '어른용');
   }
   function doPick() {
     $('pickFrom').innerHTML = [['all', '전체'], ['mine', '⭐ 즐겨찾기에서'], ['new', '🔥 새로운 곳에서']]
@@ -1396,7 +1397,8 @@
     return (data.places || []).filter((p) => p && p.name).map((p, i) => {
       // 앱의 분류 규칙을 먼저 적용해요(시장·몰 등은 '기타'가 되어 나들이 추천에서 빠져요).
       const mine = C.infer(p.name);
-      const category = mine !== '기타' ? mine : C.TYPES[p.category] ? p.category : mine;
+      // 빌드에서 '어른용'으로 정한 팝업은 이름 규칙으로 바꾸지 않아요.
+      const category = p.category === '어른용' ? p.category : mine !== '기타' ? mine : C.TYPES[p.category] ? p.category : mine;
       return { ...p, id: 'live-' + (p.id || i), origin: 'live', category, env: C.inferEnv(p.name, category) || p.env || '' };
     });
   }

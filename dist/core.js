@@ -15,6 +15,8 @@
     '체험·놀이': { icon: '🎨', bg: '#f9dfe3', env: '실내', group: 'kids', label: '체험관·놀이시설', short: '체험·놀이' },
     '자연·공원': { icon: '🌳', bg: '#d7ebe0', env: '야외', group: 'kids', label: '자연·공원·바다' },
     '축제·행사': { icon: '🎪', bg: '#fbe2cf', env: '야외', group: 'kids', short: '축제' },
+    // 어른용: 술·브랜드·백화점 팝업처럼 아이보다 어른이 즐길 곳(네이버 '팝업스토어' 검색). 가볼만한 곳에 보이지만 '한 곳 골라줘'에서는 빼요.
+    '어른용': { icon: '🥂', bg: '#f3e0ea', env: '실내', group: 'adult', label: '어른용 팝업·전시', short: '어른용' },
     '캠핑장': { icon: '⛺', bg: '#e5ebc8', env: '야외', group: 'camp' },
     '맛집·카페': { icon: '🍽️', bg: '#f3e3d3', env: '실내', group: 'food', label: '음식점·카페', short: '음식점' },
     '숙소·펜션': { icon: '🏡', bg: '#e8e2f3', env: '', group: 'stay', label: '숙소·펜션', short: '숙소' },
@@ -25,6 +27,7 @@
   // 묶음(화면에는 안 보여요). outing=true인 묶음의 분류만 '나들이'로 인기·한 곳 골라줘의 기본 후보가 돼요.
   const GROUPS = [
     { id: 'kids', label: '아이랑 가볼만한 곳', short: '아이랑', icon: '🧒', outing: true },
+    { id: 'adult', label: '어른용', short: '어른용', icon: '🥂', outing: true },
     { id: 'camp', label: '캠핑장', short: '캠핑장', icon: '⛺', outing: true },
     { id: 'food', label: '음식점·카페', short: '음식점', icon: '🍽️', outing: false },
     { id: 'stay', label: '숙소', short: '숙소', icon: '🏡', outing: false },
